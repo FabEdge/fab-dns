@@ -6,7 +6,6 @@ package v1alpha1
 
 import (
 	"k8s.io/api/core/v1"
-	"k8s.io/api/discovery/v1beta1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -110,7 +109,7 @@ func (in *GlobalServiceSpec) DeepCopyInto(out *GlobalServiceSpec) {
 	}
 	if in.Endpoints != nil {
 		in, out := &in.Endpoints, &out.Endpoints
-		*out = make([]v1beta1.Endpoint, len(*in))
+		*out = make([]Endpoint, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}

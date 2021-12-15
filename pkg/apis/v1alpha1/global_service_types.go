@@ -2,7 +2,6 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
-	discoveryv1 "k8s.io/api/discovery/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -35,7 +34,7 @@ type GlobalServiceSpec struct {
 
 	Ports []ServicePort `json:"ports,omitempty"`
 
-	Endpoints []discoveryv1.Endpoint `json:"endpoints,omitempty"`
+	Endpoints []Endpoint `json:"endpoints,omitempty"`
 }
 
 // Endpoint represents a single logical "backend" implementing a service.

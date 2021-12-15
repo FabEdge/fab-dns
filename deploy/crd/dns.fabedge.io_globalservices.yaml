@@ -62,34 +62,6 @@ spec:
                       type: string
                     type: array
                     x-kubernetes-list-type: set
-                  conditions:
-                    description: conditions contains information about the current
-                      status of the endpoint.
-                    properties:
-                      ready:
-                        description: ready indicates that this endpoint is prepared
-                          to receive traffic, according to whatever system is managing
-                          the endpoint. A nil value indicates an unknown state. In
-                          most cases consumers should interpret this unknown state
-                          as ready. For compatibility reasons, ready should never
-                          be "true" for terminating endpoints.
-                        type: boolean
-                      serving:
-                        description: serving is identical to ready except that it
-                          is set regardless of the terminating state of endpoints.
-                          This condition should be set to true for a ready endpoint
-                          that is terminating. If nil, consumers should defer to the
-                          ready condition. This field can be enabled with the EndpointSliceTerminatingCondition
-                          feature gate.
-                        type: boolean
-                      terminating:
-                        description: terminating indicates that this endpoint is terminating.
-                          A nil value indicates an unknown state. Consumers should
-                          interpret this unknown state to mean that the endpoint is
-                          not terminating. This field can be enabled with the EndpointSliceTerminatingCondition
-                          feature gate.
-                        type: boolean
-                    type: object
                   hostname:
                     description: hostname of this endpoint. This field may be used
                       by consumers of endpoints to distinguish endpoints from each
@@ -98,11 +70,9 @@ spec:
                       values in DNS). Must be lowercase and pass DNS Label (RFC 1123)
                       validation.
                     type: string
-                  nodeName:
-                    description: nodeName represents the name of the Node hosting
-                      this endpoint. This can be used to determine endpoints local
-                      to a Node. This field can be enabled with the EndpointSliceNodeName
-                      feature gate.
+                  region:
+                    description: Region indicates the region where the endpoint is
+                      located
                     type: string
                   targetRef:
                     description: targetRef is a reference to a Kubernetes object that
@@ -141,23 +111,9 @@ spec:
                         description: 'UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids'
                         type: string
                     type: object
-                  topology:
-                    additionalProperties:
-                      type: string
-                    description: 'topology contains arbitrary topology information
-                      associated with the endpoint. These key/value pairs must conform
-                      with the label format. https://kubernetes.io/docs/concepts/overview/working-with-objects/labels
-                      Topology may include a maximum of 16 key/value pairs. This includes,
-                      but is not limited to the following well known keys: * kubernetes.io/hostname:
-                      the value indicates the hostname of the node   where the endpoint
-                      is located. This should match the corresponding   node label.
-                      * topology.kubernetes.io/zone: the value indicates the zone
-                      where the   endpoint is located. This should match the corresponding
-                      node label. * topology.kubernetes.io/region: the value indicates
-                      the region where the   endpoint is located. This should match
-                      the corresponding node label. This field is deprecated and will
-                      be removed in future api versions.'
-                    type: object
+                  zone:
+                    description: Zone indicates the zone where the endpoint is located
+                    type: string
                 required:
                 - addresses
                 type: object
