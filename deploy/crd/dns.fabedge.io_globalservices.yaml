@@ -62,6 +62,10 @@ spec:
                       type: string
                     type: array
                     x-kubernetes-list-type: set
+                  cluster:
+                    description: Cluster indicates the cluster where an endpoint is
+                      located
+                    type: string
                   hostname:
                     description: hostname of this endpoint. This field may be used
                       by consumers of endpoints to distinguish endpoints from each
