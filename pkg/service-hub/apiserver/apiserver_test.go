@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -19,6 +20,7 @@ import (
 
 	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
 	"github.com/FabEdge/fab-dns/pkg/service-hub/apiserver"
+	"github.com/FabEdge/fab-dns/pkg/service-hub/types"
 )
 
 const (
@@ -45,16 +47,42 @@ var _ = Describe("APIServer", func() {
 		td.clearServices()
 	})
 
+	When("receive a heartbeat request", func() {
+
+		It("will change expire time of cluster in cluster store", func() {
+			clusterName := "test"
+			resp := td.heartbeat(clusterName)
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+
+			cluster := td.clusterStore.Get(clusterName)
+			Expect(cluster.ExpireTime().IsZero()).To(BeFalse())
+		})
+	})
+
 	When("receive a upload request for a exported service from a cluster", func() {
 		Context("the corresponding global service does not exist", func() {
-			It("will create a corresponding global service under the same namespaceDefault", func() {
+			BeforeEach(func() {
 				resp := td.uploadGlobalService(td.serviceFromBeijing)
 				Expect(resp.Code).To(Equal(http.StatusNoContent))
+			})
 
+			It("will create a corresponding global service under the same namespaceDefault", func() {
 				service := td.getService()
 				Expect(service.Spec.Type).To(Equal(serviceFromBeijing.Spec.Type))
 				Expect(service.Spec.Ports).To(Equal(serviceFromBeijing.Spec.Ports))
 				Expect(service.Spec.Endpoints).To(Equal(serviceFromBeijing.Spec.Endpoints))
+			})
+
+			It("will add service's key to cluster in cluster store", func() {
+				svc := td.serviceFromBeijing
+				cluster := td.clusterStore.Get(svc.ClusterName)
+				Expect(cluster).NotTo(BeNil())
+
+				keys := cluster.GetAllServiceKeys()
+				Expect(keys).To(ConsistOf(client.ObjectKey{
+					Name:      svc.Name,
+					Namespace: svc.Namespace,
+				}))
 			})
 		})
 
@@ -140,6 +168,13 @@ var _ = Describe("APIServer", func() {
 			Expect(service.Spec.Endpoints).To(Equal(serviceFromShanghai.Spec.Endpoints))
 		})
 
+		It("will remove service key from cluster in cluster store", func() {
+			clusterName := serviceFromBeijing.ClusterName
+			cluster := td.clusterStore.Get(clusterName)
+			keys := cluster.GetAllServiceKeys()
+			Expect(keys).To(BeNil())
+		})
+
 		It("the global service will be deleted if no endpoints are left", func() {
 			resp := td.removeEndpoints(serviceFromShanghai.ClusterName)
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
@@ -186,16 +221,20 @@ type testDriver struct {
 	server              *http.Server
 	serviceFromBeijing  apis.GlobalService
 	serviceFromShanghai apis.GlobalService
+	clusterStore        *types.ClusterStore
 
 	serviceName string
 	namespace   string
 }
 
 func newTestDriver() *testDriver {
+	clusterStore := types.NewClusterStore()
 	server, err := apiserver.New(apiserver.Config{
-		Address: "localhost:3000",
-		Log:     klogr.New(),
-		Client:  k8sClient,
+		Address:               "localhost:3000",
+		Log:                   klogr.New(),
+		Client:                k8sClient,
+		ClusterStore:          clusterStore,
+		ClusterExpireDuration: 5 * time.Second,
 	})
 	Expect(err).Should(Succeed())
 
@@ -267,7 +306,15 @@ func newTestDriver() *testDriver {
 		namespace:           namespaceDefault,
 		serviceFromBeijing:  serviceFromBeijing,
 		serviceFromShanghai: serviceFromShanghai,
+		clusterStore:        clusterStore,
 	}
+}
+
+func (td *testDriver) heartbeat(clusterName string) *httptest.ResponseRecorder {
+	req, _ := http.NewRequest(http.MethodGet, "/api/heartbeat", nil)
+	req.Header.Add(apiserver.HeaderClusterName, clusterName)
+
+	return td.sendRequest(req)
 }
 
 func (td *testDriver) uploadGlobalService(svc apis.GlobalService) *httptest.ResponseRecorder {

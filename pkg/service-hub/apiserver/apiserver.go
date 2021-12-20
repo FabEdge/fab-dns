@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
+	"github.com/FabEdge/fab-dns/pkg/service-hub/types"
 )
 
 const (
@@ -24,9 +25,11 @@ const (
 )
 
 type Config struct {
-	Address string
-	Log     logr.Logger
-	Client  client.Client
+	Address               string
+	Log                   logr.Logger
+	Client                client.Client
+	ClusterStore          *types.ClusterStore
+	ClusterExpireDuration time.Duration
 }
 
 func New(cfg Config) (*http.Server, error) {
@@ -35,7 +38,8 @@ func New(cfg Config) (*http.Server, error) {
 	}
 
 	r := chi.NewRouter()
-	r.Use(middleware.Recoverer)
+	r.Use(middleware.Recoverer, s.updateClusterExpireTime)
+	r.Get("/api/heartbeat", s.Heartbeat)
 	r.Get("/api/global-services", s.GetAllGlobalServices)
 	r.Post("/api/global-services", s.UploadGlobalService)
 	r.Delete("/api/global-services/{namespaceDefault}/{name}", s.deleteEndpoints)
@@ -53,6 +57,10 @@ type Server struct {
 	// from being changed by requests simultaneously
 	// todo: implement object lock
 	lock sync.Mutex
+}
+
+func (s *Server) Heartbeat(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) GetAllGlobalServices(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +112,14 @@ func (s *Server) UploadGlobalService(w http.ResponseWriter, r *http.Request) {
 		s.response(w, http.StatusBadRequest, fmt.Sprintf("data is not valid"))
 		return
 	}
+
+	defer func() {
+		cluster := s.ClusterStore.New(s.getCluster(r))
+		cluster.AddServiceKey(client.ObjectKey{
+			Name:      gs.Name,
+			Namespace: gs.Namespace,
+		})
+	}()
 
 	if err = s.createOrUpdateGlobalService(gs); err != nil {
 		s.response(w, http.StatusInternalServerError, err.Error())
@@ -186,6 +202,14 @@ func (s *Server) deleteEndpoints(w http.ResponseWriter, r *http.Request) {
 			err = s.Client.Update(ctx, &svc)
 		}
 
+		cluster := s.ClusterStore.Get(clusterName)
+		if cluster != nil {
+			cluster.RemoveServiceKey(client.ObjectKey{
+				Name:      serviceName,
+				Namespace: namespace,
+			})
+		}
+
 		if err != nil {
 			s.response(w, http.StatusInternalServerError, fmt.Sprintf("failed to remove endpoints: %s", err))
 		} else {
@@ -200,6 +224,23 @@ func (s *Server) response(w http.ResponseWriter, statusCode int, msg string) {
 	if err != nil {
 		s.Log.Error(err, "failed to write http response")
 	}
+}
+
+func (s *Server) updateClusterExpireTime(next http.Handler) http.Handler {
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		clusterName := s.getCluster(r)
+		if clusterName == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		cluster := s.ClusterStore.New(clusterName)
+		cluster.SetExpireTime(time.Now().Add(s.ClusterExpireDuration))
+
+		next.ServeHTTP(w, r)
+	}
+
+	return http.HandlerFunc(fn)
 }
 
 func (s *Server) getCluster(r *http.Request) string {
