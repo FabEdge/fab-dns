@@ -1,4 +1,37 @@
+OUTPUT_DIR ?= _output
+
+GOLDFLAGS ?= -s -w
+LDFLAGS := -ldflags "${GOLDFLAGS}"
+
 CRD_OPTIONS ?= "crd:trivialVersions=true"
+KUBEBUILDER_VERSION ?= 2.3.1
+GOOS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
+GOARCH ?= amd64
+# Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
+ifeq (,$(shell go env GOBIN))
+GOBIN=$(shell go env GOPATH)/bin
+else
+GOBIN=$(shell go env GOBIN)
+endif
+
+export KUBEBUILDER_ASSETS ?= $(GOBIN)
+
+fmt:
+	go fmt ./...
+
+vet:
+	go vet ./...
+
+service-hub: fmt vet
+	GOOS=${GOOS} go build ${LDFLAGS}  -o ${OUTPUT_DIR}/$@ ./cmd/$@
+
+.PHONY: test
+test:
+ifneq (,$(shell which ginkgo))
+	ginkgo ./pkg/...
+else
+	go test ./pkg/...
+endif
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
