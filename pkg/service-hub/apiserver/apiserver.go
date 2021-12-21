@@ -22,6 +22,9 @@ import (
 
 const (
 	HeaderClusterName = "X-FabEdge-Cluster"
+
+	PathHeartbeat      = "/api/heartbeat"
+	PathGlobalServices = "/api/global-services"
 )
 
 type Config struct {
@@ -39,10 +42,10 @@ func New(cfg Config) (*http.Server, error) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer, s.updateClusterExpireTime)
-	r.Get("/api/heartbeat", s.Heartbeat)
-	r.Get("/api/global-services", s.GetAllGlobalServices)
-	r.Post("/api/global-services", s.UploadGlobalService)
-	r.Delete("/api/global-services/{namespaceDefault}/{name}", s.deleteEndpoints)
+	r.Get(PathHeartbeat, s.Heartbeat)
+	r.Get(PathGlobalServices, s.GetAllGlobalServices)
+	r.Post(PathGlobalServices, s.UploadGlobalService)
+	r.Delete(PathGlobalServices+"/{namespaceDefault}/{name}", s.deleteEndpoints)
 
 	return &http.Server{
 		Addr:    cfg.Address,

@@ -311,7 +311,7 @@ func newTestDriver() *testDriver {
 }
 
 func (td *testDriver) heartbeat(clusterName string) *httptest.ResponseRecorder {
-	req, _ := http.NewRequest(http.MethodGet, "/api/heartbeat", nil)
+	req, _ := http.NewRequest(http.MethodGet, apiserver.PathHeartbeat, nil)
 	req.Header.Add(apiserver.HeaderClusterName, clusterName)
 
 	return td.sendRequest(req)
@@ -321,14 +321,14 @@ func (td *testDriver) uploadGlobalService(svc apis.GlobalService) *httptest.Resp
 	endpointsJson, _ := json.Marshal(svc)
 
 	reqBody := bytes.NewBuffer(endpointsJson)
-	req, _ := http.NewRequest(http.MethodPost, "/api/global-services", reqBody)
+	req, _ := http.NewRequest(http.MethodPost, apiserver.PathGlobalServices, reqBody)
 	req.Header.Add(apiserver.HeaderClusterName, svc.ClusterName)
 
 	return td.sendRequest(req)
 }
 
 func (td *testDriver) removeEndpoints(cluster string) *httptest.ResponseRecorder {
-	url := fmt.Sprintf("/api/global-services/%s/%s", td.namespace, td.serviceName)
+	url := fmt.Sprintf("%s/%s/%s", apiserver.PathGlobalServices, td.namespace, td.serviceName)
 	req, _ := http.NewRequest(http.MethodDelete, url, nil)
 	req.Header.Add(apiserver.HeaderClusterName, cluster)
 
@@ -336,7 +336,7 @@ func (td *testDriver) removeEndpoints(cluster string) *httptest.ResponseRecorder
 }
 
 func (td *testDriver) downloadAllGlobalServices(cluster string) []apis.GlobalService {
-	req, _ := http.NewRequest(http.MethodGet, "/api/global-services", nil)
+	req, _ := http.NewRequest(http.MethodGet, apiserver.PathGlobalServices, nil)
 	req.Header.Add(apiserver.HeaderClusterName, cluster)
 
 	resp := td.sendRequest(req)
