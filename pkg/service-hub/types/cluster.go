@@ -7,13 +7,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type Empty struct{}
-
 // Cluster is used to store all keys of global services reported by
 // a cluster. A cluster should be created by ClusterStore.New method
 type Cluster struct {
 	name          string
-	serviceKeySet map[client.ObjectKey]Empty
+	serviceKeySet ObjectKeySet
 	expireTime    time.Time
 	lock          sync.RWMutex
 }
@@ -63,13 +61,13 @@ func (c *Cluster) GetAllServiceKeys() []client.ObjectKey {
 func (c *Cluster) AddServiceKey(key client.ObjectKey) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.serviceKeySet[key] = Empty{}
+	c.serviceKeySet.Add(key)
 }
 
 func (c *Cluster) RemoveServiceKey(key client.ObjectKey) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	delete(c.serviceKeySet, key)
+	c.serviceKeySet.Delete(key)
 }
 
 func (store *ClusterStore) New(name string) *Cluster {
@@ -78,7 +76,7 @@ func (store *ClusterStore) New(name string) *Cluster {
 
 	if _, exists := store.clusters[name]; !exists {
 		store.clusters[name] = &Cluster{
-			serviceKeySet: make(map[client.ObjectKey]Empty),
+			serviceKeySet: NewObjectKeySet(),
 			name:          name,
 		}
 	}
