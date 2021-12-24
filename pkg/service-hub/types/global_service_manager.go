@@ -27,7 +27,11 @@ var _ GlobalServiceManager = &globalServiceManager{}
 
 type globalServiceManager struct {
 	client client.Client
-	lock   sync.RWMutex
+
+	// this lock is used to protect a global service
+	// from being changed by requests simultaneously
+	// todo: implement object lock
+	lock sync.RWMutex
 }
 
 func NewGlobalServiceManager(cli client.Client) GlobalServiceManager {

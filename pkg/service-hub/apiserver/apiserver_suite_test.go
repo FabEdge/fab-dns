@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -15,11 +14,7 @@ import (
 	testutil "github.com/FabEdge/fab-dns/pkg/util/test"
 )
 
-var cfg *rest.Config
 var k8sClient client.Client
-
-// envtest provide an api server which has some differences from real environments,
-// read https://book.kubebuilder.io/reference/envtest.html#testing-considerations
 var testEnv *envtest.Environment
 
 var _ = BeforeSuite(func(done Done) {
@@ -27,7 +22,7 @@ var _ = BeforeSuite(func(done Done) {
 
 	By("starting test environment")
 	var err error
-	testEnv, cfg, k8sClient, err = testutil.StartTestEnvWithCRD(
+	testEnv, _, k8sClient, err = testutil.StartTestEnvWithCRD(
 		[]string{filepath.Join("..", "..", "..", "deploy", "crd")},
 	)
 	Expect(err).ToNot(HaveOccurred())

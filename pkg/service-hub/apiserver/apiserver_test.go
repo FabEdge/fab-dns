@@ -30,7 +30,6 @@ const (
 )
 
 var _ = Describe("APIServer", func() {
-
 	var (
 		td                  *testDriver
 		serviceFromBeijing  apis.GlobalService
@@ -48,7 +47,6 @@ var _ = Describe("APIServer", func() {
 	})
 
 	When("receive a heartbeat request", func() {
-
 		It("will change expire time of cluster in cluster store", func() {
 			clusterName := "test"
 			resp := td.heartbeat(clusterName)
@@ -60,93 +58,28 @@ var _ = Describe("APIServer", func() {
 	})
 
 	When("receive a upload request for a exported service from a cluster", func() {
-		Context("the corresponding global service does not exist", func() {
-			BeforeEach(func() {
-				resp := td.uploadGlobalService(td.serviceFromBeijing)
-				Expect(resp.Code).To(Equal(http.StatusNoContent))
-			})
-
-			It("will create a corresponding global service under the same namespaceDefault", func() {
-				service := td.getService()
-				Expect(service.Spec.Type).To(Equal(serviceFromBeijing.Spec.Type))
-				Expect(service.Spec.Ports).To(Equal(serviceFromBeijing.Spec.Ports))
-				Expect(service.Spec.Endpoints).To(Equal(serviceFromBeijing.Spec.Endpoints))
-			})
-
-			It("will add service's key to cluster in cluster store", func() {
-				svc := td.serviceFromBeijing
-				cluster := td.clusterStore.Get(svc.ClusterName)
-				Expect(cluster).NotTo(BeNil())
-
-				keys := cluster.GetAllServiceKeys()
-				Expect(keys).To(ConsistOf(client.ObjectKey{
-					Name:      svc.Name,
-					Namespace: svc.Namespace,
-				}))
-			})
+		BeforeEach(func() {
+			resp := td.uploadGlobalService(td.serviceFromBeijing)
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
 		})
 
-		Context("the corresponding global service exists", func() {
-			BeforeEach(func() {
-				resp := td.uploadGlobalService(td.serviceFromBeijing)
-				Expect(resp.Code).To(Equal(http.StatusNoContent))
+		It("will use GlobalServiceManager.CreateOrMergeGlobalService to process the service", func() {
+			service := td.getService()
+			Expect(service.Spec.Type).To(Equal(serviceFromBeijing.Spec.Type))
+			Expect(service.Spec.Ports).To(Equal(serviceFromBeijing.Spec.Ports))
+			Expect(service.Spec.Endpoints).To(Equal(serviceFromBeijing.Spec.Endpoints))
+		})
 
-				resp = td.uploadGlobalService(td.serviceFromShanghai)
-				Expect(resp.Code).To(Equal(http.StatusNoContent))
-			})
+		It("will add service's key to cluster in cluster store", func() {
+			svc := td.serviceFromBeijing
+			cluster := td.clusterStore.Get(svc.ClusterName)
+			Expect(cluster).NotTo(BeNil())
 
-			It("will update ports from request", func() {
-				service := td.getService()
-				Expect(service.Spec.Ports).To(Equal(serviceFromShanghai.Spec.Ports))
-				Expect(service.Spec.Ports).NotTo(Equal(serviceFromBeijing.Spec.Ports))
-			})
-
-			It("will append endpoints from request", func() {
-				service := td.getService()
-				Expect(service.Spec.Endpoints).To(ConsistOf(
-					serviceFromBeijing.Spec.Endpoints[0],
-					serviceFromShanghai.Spec.Endpoints[0],
-				))
-			})
-
-			When("endpoints of the uploaded service are different from old endpoints", func() {
-				It("will remove old endpoints and append new endpoints", func() {
-					serviceFromShanghai.Spec.Endpoints = []apis.Endpoint{
-						{
-							Cluster:   "shanghai",
-							Region:    "south",
-							Zone:      "shanghai",
-							Addresses: []string{"192.168.1.3"},
-							TargetRef: &corev1.ObjectReference{
-								Kind:      "Service",
-								Name:      serviceNginx,
-								Namespace: namespaceDefault,
-							},
-						},
-						{
-							Cluster:   "shanghai",
-							Region:    "south",
-							Zone:      "shanghai",
-							Addresses: []string{"192.168.1.4"},
-							TargetRef: &corev1.ObjectReference{
-								Kind:      "Service",
-								Name:      serviceNginx,
-								Namespace: namespaceDefault,
-							},
-						},
-					}
-					resp := td.uploadGlobalService(serviceFromShanghai)
-					Expect(resp.Code).To(Equal(http.StatusNoContent))
-
-					service := td.getService()
-					Expect(service.Spec.Ports).To(Equal(serviceFromShanghai.Spec.Ports))
-					Expect(service.Spec.Endpoints).To(ConsistOf(
-						serviceFromBeijing.Spec.Endpoints[0],
-						serviceFromShanghai.Spec.Endpoints[0],
-						serviceFromShanghai.Spec.Endpoints[1],
-					))
-				})
-			})
+			keys := cluster.GetAllServiceKeys()
+			Expect(keys).To(ConsistOf(client.ObjectKey{
+				Name:      svc.Name,
+				Namespace: svc.Namespace,
+			}))
 		})
 	})
 
@@ -162,7 +95,7 @@ var _ = Describe("APIServer", func() {
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 		})
 
-		It("will remove endpoints of this cluster from specified global service", func() {
+		It("will use GlobalServiceManager.RecallGlobalService to handle specified global service", func() {
 			service := td.getService()
 			Expect(service.Spec.Ports).To(Equal(serviceFromShanghai.Spec.Ports))
 			Expect(service.Spec.Endpoints).To(Equal(serviceFromShanghai.Spec.Endpoints))
@@ -173,13 +106,6 @@ var _ = Describe("APIServer", func() {
 			cluster := td.clusterStore.Get(clusterName)
 			keys := cluster.GetAllServiceKeys()
 			Expect(keys).To(BeNil())
-		})
-
-		It("the global service will be deleted if no endpoints are left", func() {
-			resp := td.removeEndpoints(serviceFromShanghai.ClusterName)
-			Expect(resp.Code).To(Equal(http.StatusNoContent))
-
-			td.ExpectServiceNotFound()
 		})
 	})
 
@@ -235,6 +161,7 @@ func newTestDriver() *testDriver {
 		Client:                k8sClient,
 		ClusterStore:          clusterStore,
 		ClusterExpireDuration: 5 * time.Second,
+		GlobalServiceManager:  types.NewGlobalServiceManager(k8sClient),
 	})
 	Expect(err).Should(Succeed())
 
@@ -371,7 +298,7 @@ func (td *testDriver) ExpectServiceNotFound() {
 	var svc apis.GlobalService
 
 	err := k8sClient.Get(context.Background(), client.ObjectKey{Name: td.serviceName, Namespace: td.namespace}, &svc)
-	Expect(errors.IsNotFound(err)).To(BeTrue())
+	Expect(errors.IsNotFound(err)).To(BeTrue(), "service should not be found")
 }
 
 func (td *testDriver) clearServices() {

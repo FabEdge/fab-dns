@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-logr/logr"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,6 +30,7 @@ type Config struct {
 	Log                   logr.Logger
 	Client                client.Client
 	ClusterStore          *types.ClusterStore
+	GlobalServiceManager  types.GlobalServiceManager
 	ClusterExpireDuration time.Duration
 }
 
@@ -55,11 +54,6 @@ func New(cfg Config) (*http.Server, error) {
 
 type Server struct {
 	Config
-
-	// this lock is used to protect a global service
-	// from being changed by requests simultaneously
-	// todo: implement object lock
-	lock sync.Mutex
 }
 
 func (s *Server) Heartbeat(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +118,7 @@ func (s *Server) UploadGlobalService(w http.ResponseWriter, r *http.Request) {
 		})
 	}()
 
-	if err = s.createOrUpdateGlobalService(gs); err != nil {
+	if err = s.GlobalServiceManager.CreateOrMergeGlobalService(gs); err != nil {
 		s.response(w, http.StatusInternalServerError, err.Error())
 		return
 	} else {
@@ -132,79 +126,15 @@ func (s *Server) UploadGlobalService(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) createOrUpdateGlobalService(externalService apis.GlobalService) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	var (
-		localService apis.GlobalService
-		key          = client.ObjectKey{Name: externalService.Name, Namespace: externalService.Namespace}
-	)
-
-	err := s.Client.Get(ctx, key, &localService)
-	if errors.IsNotFound(err) {
-		localService = apis.GlobalService{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      externalService.Name,
-				Namespace: externalService.Namespace,
-			},
-			Spec: apis.GlobalServiceSpec{
-				Type:      externalService.Spec.Type,
-				Ports:     externalService.Spec.Ports,
-				Endpoints: externalService.Spec.Endpoints,
-			},
-		}
-		return s.Client.Create(ctx, &localService)
-	} else if err == nil {
-		// remove old endpoints from this cluster
-		allEndpoints := removeEndpoints(localService.Spec.Endpoints, externalService.ClusterName)
-		allEndpoints = append(allEndpoints, externalService.Spec.Endpoints...)
-
-		// todo: handle cases when ports or type are different
-		localService.Spec = apis.GlobalServiceSpec{
-			Type:      externalService.Spec.Type,
-			Ports:     externalService.Spec.Ports,
-			Endpoints: allEndpoints,
-		}
-		return s.Client.Update(ctx, &localService)
-	}
-
-	return err
-}
-
 func (s *Server) deleteEndpoints(w http.ResponseWriter, r *http.Request) {
 	serviceName := chi.URLParam(r, "name")
 	namespace := chi.URLParam(r, "namespaceDefault")
+	clusterName := s.getCluster(r)
 
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	var (
-		svc apis.GlobalService
-		key = client.ObjectKey{Name: serviceName, Namespace: namespace}
-	)
-
-	err := s.Client.Get(ctx, key, &svc)
-	if errors.IsNotFound(err) {
-		w.WriteHeader(http.StatusNoContent)
-	} else if err != nil {
+	err := s.GlobalServiceManager.RecallGlobalService(clusterName, namespace, serviceName)
+	if err != nil {
 		s.response(w, http.StatusInternalServerError, fmt.Sprintf("failed to find global service: %s", err))
 	} else {
-		clusterName := s.getCluster(r)
-		svc.Spec.Endpoints = removeEndpoints(svc.Spec.Endpoints, clusterName)
-
-		if len(svc.Spec.Endpoints) == 0 {
-			err = s.Client.Delete(ctx, &svc)
-		} else {
-			err = s.Client.Update(ctx, &svc)
-		}
-
 		cluster := s.ClusterStore.Get(clusterName)
 		if cluster != nil {
 			cluster.RemoveServiceKey(client.ObjectKey{
@@ -213,11 +143,7 @@ func (s *Server) deleteEndpoints(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
-		if err != nil {
-			s.response(w, http.StatusInternalServerError, fmt.Sprintf("failed to remove endpoints: %s", err))
-		} else {
-			w.WriteHeader(http.StatusNoContent)
-		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

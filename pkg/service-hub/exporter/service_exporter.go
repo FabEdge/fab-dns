@@ -53,7 +53,7 @@ func AddToManager(cfg Config) error {
 func newServiceExporter(cfg Config) *serviceExporter {
 	return &serviceExporter{
 		Config:        cfg,
-		log:           cfg.Manager.GetLogger().WithValues(controllerName),
+		log:           cfg.Manager.GetLogger().WithName(controllerName),
 		client:        cfg.Manager.GetClient(),
 		serviceKeySet: types.NewObjectKeySet(),
 	}
