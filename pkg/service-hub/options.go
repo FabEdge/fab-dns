@@ -1,6 +1,7 @@
 package service_hub
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -11,11 +12,21 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2/klogr"
+	ctrlpkg "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
+	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
 	"github.com/FabEdge/fab-dns/pkg/service-hub/apiserver"
+	"github.com/FabEdge/fab-dns/pkg/service-hub/exporter"
 	"github.com/FabEdge/fab-dns/pkg/service-hub/types"
 )
+
+func init() {
+	_ = apis.AddToScheme(scheme.Scheme)
+}
 
 var (
 	log            = klogr.New().WithName("agent")
@@ -34,8 +45,10 @@ type Options struct {
 	TLSCertFile            string
 	TLSCACertFile          string
 
-	ClusterStore *types.ClusterStore
-	APIServer    *http.Server
+	GlobalServiceManager types.GlobalServiceManager
+	Manager              ctrlpkg.Manager
+	ClusterStore         *types.ClusterStore
+	APIServer            *http.Server
 }
 
 func (opts *Options) AddFlags(flag *pflag.FlagSet) {
@@ -45,7 +58,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 
 	flag.StringVar(&opts.APIServerListenAddress, "api-server-listen-address", "0.0.0.0:3000", "The address on which API server listen")
 	flag.StringVar(&opts.TLSKeyFile, "tls-key-file", "", "The key file for API server/client")
-	flag.StringVar(&opts.TLSKeyFile, "tls-cert-file", "", "The cert file for API server/client")
+	flag.StringVar(&opts.TLSCertFile, "tls-cert-file", "", "The cert file for API server/client")
 	flag.StringVar(&opts.TLSCACertFile, "tls-ca-cert-file", "", "The CA cert file for API server/client")
 	flag.DurationVar(&opts.ClusterExpireTime, "cluster-expire-duration", 5*time.Minute, "Expiration time after cluster stops heartbeat")
 }
@@ -79,10 +92,42 @@ func (opts Options) Validate() error {
 }
 
 func (opts *Options) Complete() (err error) {
+	if err = opts.initManager(); err != nil {
+		return err
+	}
+
+	opts.GlobalServiceManager = types.NewGlobalServiceManager(opts.Manager.GetClient())
 	opts.ClusterStore = types.NewClusterStore()
+
+	if err = opts.initAPIServer(); err != nil {
+		return err
+	}
+
+	return opts.initManagerRunnables()
+}
+
+func (opts *Options) initManager() (err error) {
+	kubeConfig, err := ctrlpkg.GetConfig()
+	if err != nil {
+		log.Error(err, "failed to load kubeconfig")
+		return err
+	}
+
+	opts.Manager, err = ctrlpkg.NewManager(kubeConfig, manager.Options{
+		Logger: log.WithName("service-hub"),
+	})
+
+	return nil
+}
+
+func (opts *Options) initAPIServer() (err error) {
 	opts.APIServer, err = apiserver.New(apiserver.Config{
-		Address:      opts.APIServerListenAddress,
-		ClusterStore: opts.ClusterStore,
+		Address:               opts.APIServerListenAddress,
+		Client:                opts.Manager.GetClient(),
+		ClusterStore:          opts.ClusterStore,
+		ClusterExpireDuration: opts.ClusterExpireTime,
+		GlobalServiceManager:  opts.GlobalServiceManager,
+		Log:                   log.WithName("apiserver"),
 	})
 	if err != nil {
 		log.Error(err, "failed to create API server")
@@ -103,11 +148,63 @@ func (opts *Options) Complete() (err error) {
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 	}
 
+	return err
+}
+
+func (opts Options) initManagerRunnables() (err error) {
+	if err = opts.Manager.Add(manager.RunnableFunc(opts.runAPIServer)); err != nil {
+		log.Error(err, "failed to add API Server to manager")
+		return err
+	}
+
+	err = exporter.AddToManager(exporter.Config{
+		ClusterName: opts.Cluster,
+		Zone:        opts.Zone,
+		Region:      opts.Region,
+		Manager:     opts.Manager,
+
+		ExportGlobalService: opts.GlobalServiceManager.CreateOrMergeGlobalService,
+		RecallGlobalService: opts.GlobalServiceManager.RecallGlobalService,
+	})
+	if err != nil {
+		log.Error(err, "failed to add global service exporter to manager")
+		return err
+	}
+
 	return nil
 }
 
 func (opts Options) Run() error {
-	return opts.APIServer.ListenAndServeTLS("", "")
+	if err := opts.Manager.Start(signals.SetupSignalHandler()); err != nil {
+		log.Error(err, "failed to start controller manager")
+		return err
+	}
+
+	return nil
+}
+
+func (opts Options) runAPIServer(ctx context.Context) error {
+	errChan := make(chan error)
+
+	go func() {
+		var err error
+		err = opts.APIServer.ListenAndServeTLS("", "")
+		if err != http.ErrServerClosed {
+			errChan <- err
+		}
+	}()
+
+	var err error
+	select {
+	case err = <-errChan:
+		if err != nil {
+			return err
+		}
+	case <-ctx.Done():
+		err = ctx.Err()
+	}
+
+	return err
 }
 
 func fileExists(filename string) bool {

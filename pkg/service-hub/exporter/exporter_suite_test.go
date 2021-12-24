@@ -1,4 +1,4 @@
-package types_test
+package exporter
 
 import (
 	"path/filepath"
@@ -40,7 +40,7 @@ var _ = AfterSuite(func() {
 	Expect(err).ShouldNot(HaveOccurred())
 })
 
-func TestTypes(t *testing.T) {
+func TestExporter(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Types Suite")
+	RunSpecs(t, "Exporter Suite")
 }
