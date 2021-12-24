@@ -7,6 +7,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrlpkg "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
@@ -47,26 +48,17 @@ func (manager *globalServiceManager) CreateOrMergeGlobalService(externalService 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	var (
-		localService apis.GlobalService
-		key          = client.ObjectKey{Name: externalService.Name, Namespace: externalService.Namespace}
-	)
+	localService := &apis.GlobalService{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      externalService.Name,
+			Namespace: externalService.Namespace,
+			Labels: map[string]string{
+				"fabedge.io/created-by": "service-hub",
+			},
+		},
+	}
 
-	err := manager.client.Get(ctx, key, &localService)
-	if errors.IsNotFound(err) {
-		localService = apis.GlobalService{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      externalService.Name,
-				Namespace: externalService.Namespace,
-			},
-			Spec: apis.GlobalServiceSpec{
-				Type:      externalService.Spec.Type,
-				Ports:     externalService.Spec.Ports,
-				Endpoints: externalService.Spec.Endpoints,
-			},
-		}
-		return manager.client.Create(ctx, &localService)
-	} else if err == nil {
+	_, err := ctrlpkg.CreateOrUpdate(ctx, manager.client, localService, func() error {
 		// remove old endpoints from this cluster
 		allEndpoints := removeEndpoints(localService.Spec.Endpoints, externalService.ClusterName)
 		allEndpoints = append(allEndpoints, externalService.Spec.Endpoints...)
@@ -77,13 +69,17 @@ func (manager *globalServiceManager) CreateOrMergeGlobalService(externalService 
 			Ports:     externalService.Spec.Ports,
 			Endpoints: allEndpoints,
 		}
-		return manager.client.Update(ctx, &localService)
-	}
+
+		return nil
+	})
 
 	return err
 }
 
 func (manager *globalServiceManager) RecallGlobalService(clusterName, namespace, serviceName string) error {
+	manager.lock.Lock()
+	defer manager.lock.Unlock()
+
 	var (
 		svc apis.GlobalService
 		key = client.ObjectKey{Name: serviceName, Namespace: namespace}
