@@ -15,6 +15,7 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 export KUBEBUILDER_ASSETS ?= $(GOBIN)
+export ACK_GINKGO_DEPRECATIONS ?= 1.16.4
 
 fmt:
 	go fmt ./...
