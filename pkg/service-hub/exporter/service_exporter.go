@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	controllerName     = "serviceExporter"
+	nameExporter       = "serviceExporter"
+	nameDiffChecker    = "diffChecker"
 	labelGlobalService = "fabedge.io/global-service"
 )
 
@@ -46,24 +47,27 @@ type serviceExporter struct {
 }
 
 func AddToManager(cfg Config) error {
-	exporter := newServiceExporter(cfg)
-	return addServiceController(cfg.Manager, exporter)
+	if err := addExporterToManager(cfg.Manager, newServiceExporter(cfg)); err != nil {
+		return err
+	}
+
+	return addDiffCheckerToManager(cfg.Manager, newDiffChecker(cfg))
 }
 
 func newServiceExporter(cfg Config) *serviceExporter {
 	return &serviceExporter{
 		Config:        cfg,
-		log:           cfg.Manager.GetLogger().WithName(controllerName),
+		log:           cfg.Manager.GetLogger().WithName(nameExporter),
 		client:        cfg.Manager.GetClient(),
 		serviceKeySet: types.NewObjectKeySet(),
 	}
 }
 
-func addServiceController(mgr manager.Manager, reconciler reconcile.Reconciler) error {
+func addExporterToManager(mgr manager.Manager, reconciler reconcile.Reconciler) error {
 	return ctrlpkg.NewControllerManagedBy(mgr).
 		For(&corev1.Service{}).
 		Owns(&discoveryv1.EndpointSlice{}).
-		Named(controllerName).
+		Named(nameExporter).
 		Complete(reconciler)
 }
 
@@ -174,11 +178,7 @@ func (exporter *serviceExporter) getEndpointsOfService(ctx context.Context, svc 
 }
 
 func (exporter serviceExporter) shouldSkipService(svc corev1.Service) bool {
-	if svc.Labels == nil || svc.Labels[labelGlobalService] != "true" {
-		return true
-	}
-
-	return svc.Spec.Type != corev1.ServiceTypeClusterIP
+	return !isGlobalService(svc.Labels) || svc.Spec.Type != corev1.ServiceTypeClusterIP
 }
 
 func (exporter serviceExporter) recallGlobalService(serviceKey client.ObjectKey) error {
@@ -198,4 +198,8 @@ func (exporter serviceExporter) recallGlobalService(serviceKey client.ObjectKey)
 	exporter.serviceKeySet.Delete(serviceKey)
 
 	return nil
+}
+
+func isGlobalService(labels map[string]string) bool {
+	return labels != nil && labels[labelGlobalService] == "true"
 }
