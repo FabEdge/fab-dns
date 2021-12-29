@@ -1,4 +1,4 @@
-package dns_test
+package fabdns_test
 
 import (
 	"testing"
