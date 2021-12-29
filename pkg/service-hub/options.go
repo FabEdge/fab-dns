@@ -197,7 +197,12 @@ func (opts *Options) initClient() error {
 		return opts.Client.DeleteGlobalService(namespace, serviceName)
 	}
 
-	return opts.Client.Heartbeat()
+	err = opts.Client.Heartbeat()
+	if err != nil {
+		log.Error(err, "failed to send initial hearbeat")
+	}
+
+	return err
 }
 
 func (opts Options) getKeyPairAndCACertPool() (tls.Certificate, *x509.CertPool, error) {
