@@ -131,7 +131,7 @@ func (s *Server) deleteEndpoints(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespaceDefault")
 	clusterName := s.getCluster(r)
 
-	err := s.GlobalServiceManager.RecallGlobalService(clusterName, namespace, serviceName)
+	err := s.GlobalServiceManager.RevokeGlobalService(clusterName, namespace, serviceName)
 	if err != nil {
 		s.response(w, http.StatusInternalServerError, fmt.Sprintf("failed to find global service: %s", err))
 	} else {

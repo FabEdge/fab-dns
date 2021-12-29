@@ -18,12 +18,13 @@ import (
 )
 
 const (
-	controllerName     = "serviceExporter"
-	labelGlobalService = "fabedge.io/global-service"
+	nameExporter           = "serviceExporter"
+	nameLostServiceRevoker = "lostServiceRevoker"
+	labelGlobalService     = "fabedge.io/global-service"
 )
 
 type ExportGlobalServiceFunc func(service apis.GlobalService) error
-type RecallGlobalServiceFunc func(clusterName, namespace, serviceName string) error
+type RevokeGlobalServiceFunc func(clusterName, namespace, serviceName string) error
 
 type Config struct {
 	ClusterName string
@@ -32,7 +33,7 @@ type Config struct {
 
 	Manager             manager.Manager
 	ExportGlobalService ExportGlobalServiceFunc
-	RecallGlobalService RecallGlobalServiceFunc
+	RevokeGlobalService RevokeGlobalServiceFunc
 }
 
 var _ reconcile.Reconciler = &serviceExporter{}
@@ -46,24 +47,27 @@ type serviceExporter struct {
 }
 
 func AddToManager(cfg Config) error {
-	exporter := newServiceExporter(cfg)
-	return addServiceController(cfg.Manager, exporter)
+	if err := addExporterToManager(cfg.Manager, newServiceExporter(cfg)); err != nil {
+		return err
+	}
+
+	return addDiffCheckerToManager(cfg.Manager, newLostServiceRevoker(cfg))
 }
 
 func newServiceExporter(cfg Config) *serviceExporter {
 	return &serviceExporter{
 		Config:        cfg,
-		log:           cfg.Manager.GetLogger().WithName(controllerName),
+		log:           cfg.Manager.GetLogger().WithName(nameExporter),
 		client:        cfg.Manager.GetClient(),
 		serviceKeySet: types.NewObjectKeySet(),
 	}
 }
 
-func addServiceController(mgr manager.Manager, reconciler reconcile.Reconciler) error {
+func addExporterToManager(mgr manager.Manager, reconciler reconcile.Reconciler) error {
 	return ctrlpkg.NewControllerManagedBy(mgr).
 		For(&corev1.Service{}).
 		Owns(&discoveryv1.EndpointSlice{}).
-		Named(controllerName).
+		Named(nameExporter).
 		Complete(reconciler)
 }
 
@@ -74,7 +78,7 @@ func (exporter serviceExporter) Reconcile(ctx context.Context, req reconcile.Req
 	if err = exporter.client.Get(ctx, req.NamespacedName, &svc); err != nil {
 		if errors.IsNotFound(err) {
 			log.V(5).Info("service is not found")
-			err = exporter.recallGlobalService(req.NamespacedName)
+			err = exporter.revokeGlobalService(req.NamespacedName)
 			return
 		}
 
@@ -84,7 +88,7 @@ func (exporter serviceExporter) Reconcile(ctx context.Context, req reconcile.Req
 
 	if exporter.shouldSkipService(svc) {
 		log.V(5).Info("this service is not a global-service")
-		err = exporter.recallGlobalService(req.NamespacedName)
+		err = exporter.revokeGlobalService(req.NamespacedName)
 		return
 	}
 
@@ -174,28 +178,28 @@ func (exporter *serviceExporter) getEndpointsOfService(ctx context.Context, svc 
 }
 
 func (exporter serviceExporter) shouldSkipService(svc corev1.Service) bool {
-	if svc.Labels == nil || svc.Labels[labelGlobalService] != "true" {
-		return true
-	}
-
-	return svc.Spec.Type != corev1.ServiceTypeClusterIP
+	return !isGlobalService(svc.Labels) || svc.Spec.Type != corev1.ServiceTypeClusterIP
 }
 
-func (exporter serviceExporter) recallGlobalService(serviceKey client.ObjectKey) error {
+func (exporter serviceExporter) revokeGlobalService(serviceKey client.ObjectKey) error {
 	log := exporter.log.WithValues("serviceKey", serviceKey)
 
 	if !exporter.serviceKeySet.Has(serviceKey) {
-		log.V(5).Info("this service is not exported before, skip recalling")
+		log.V(5).Info("this service is not exported before, skip revoking")
 		return nil
 	}
 
-	log.V(5).Info("recall global service and associated endpoints")
-	if err := exporter.RecallGlobalService(exporter.ClusterName, serviceKey.Namespace, serviceKey.Name); err != nil {
-		log.Error(err, "failed to recall global service")
+	log.V(5).Info("revoke global service and associated endpoints")
+	if err := exporter.RevokeGlobalService(exporter.ClusterName, serviceKey.Namespace, serviceKey.Name); err != nil {
+		log.Error(err, "failed to revoke global service")
 		return err
 	}
 
 	exporter.serviceKeySet.Delete(serviceKey)
 
 	return nil
+}
+
+func isGlobalService(labels map[string]string) bool {
+	return labels != nil && labels[labelGlobalService] == "true"
 }

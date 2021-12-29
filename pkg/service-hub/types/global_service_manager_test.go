@@ -102,11 +102,11 @@ var _ = Describe("GlobalServiceManager", func() {
 		})
 	})
 
-	When("RecallGlobalService is called", func() {
+	When("RevokeGlobalService is called", func() {
 		BeforeEach(func() {
 			td.createOrMergeGlobalService(serviceFromBeijing)
 			td.createOrMergeGlobalService(serviceFromShanghai)
-			td.recallGlobalService(serviceFromBeijing)
+			td.revokeGlobalService(serviceFromBeijing)
 		})
 
 		It("will remove endpoints of this cluster from specified global service", func() {
@@ -116,12 +116,12 @@ var _ = Describe("GlobalServiceManager", func() {
 		})
 
 		It("the global service will be deleted if no endpoints are left", func() {
-			td.recallGlobalService(serviceFromShanghai)
+			td.revokeGlobalService(serviceFromShanghai)
 			td.ExpectServiceNotFound()
 		})
 
 		It("will just return without error if target global service not found", func() {
-			td.recallGlobalService(apis.GlobalService{
+			td.revokeGlobalService(apis.GlobalService{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "not-found",
 					Namespace:   "default",
@@ -219,8 +219,8 @@ func (td *testDriver) createOrMergeGlobalService(service apis.GlobalService) {
 	Expect(td.manager.CreateOrMergeGlobalService(service)).To(Succeed())
 }
 
-func (td *testDriver) recallGlobalService(svc apis.GlobalService) {
-	Expect(td.manager.RecallGlobalService(svc.ClusterName, svc.Namespace, svc.Name)).To(Succeed())
+func (td *testDriver) revokeGlobalService(svc apis.GlobalService) {
+	Expect(td.manager.RevokeGlobalService(svc.ClusterName, svc.Namespace, svc.Name)).To(Succeed())
 }
 
 func (td *testDriver) getService() apis.GlobalService {

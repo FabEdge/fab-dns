@@ -18,10 +18,10 @@ type GlobalServiceManager interface {
 	// otherwise merge endpoints and ports of service passed in
 	CreateOrMergeGlobalService(service apis.GlobalService) error
 
-	// RecallGlobalService will remove endpoints of cluster from global service
+	// RevokeGlobalService will remove endpoints of cluster from global service
 	// specified by namespace/name, if no endpoints left, the global service will
 	// be also deleted
-	RecallGlobalService(clusterName, namespace, serviceName string) error
+	RevokeGlobalService(clusterName, namespace, serviceName string) error
 }
 
 var _ GlobalServiceManager = &globalServiceManager{}
@@ -76,7 +76,7 @@ func (manager *globalServiceManager) CreateOrMergeGlobalService(externalService 
 	return err
 }
 
-func (manager *globalServiceManager) RecallGlobalService(clusterName, namespace, serviceName string) error {
+func (manager *globalServiceManager) RevokeGlobalService(clusterName, namespace, serviceName string) error {
 	manager.lock.Lock()
 	defer manager.lock.Unlock()
 

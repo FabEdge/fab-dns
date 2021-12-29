@@ -95,7 +95,7 @@ var _ = Describe("APIServer", func() {
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 		})
 
-		It("will use GlobalServiceManager.RecallGlobalService to handle specified global service", func() {
+		It("will use GlobalServiceManager.RevokeGlobalService to handle specified global service", func() {
 			service := td.getService()
 			Expect(service.Spec.Ports).To(Equal(serviceFromShanghai.Spec.Ports))
 			Expect(service.Spec.Endpoints).To(Equal(serviceFromShanghai.Spec.Endpoints))

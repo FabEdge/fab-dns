@@ -61,7 +61,7 @@ var _ = Describe("ServiceExporter", func() {
 		When("it is marked as global-service", func() {
 			BeforeEach(func() {
 				td.createObject(&svc)
-				td.receiveRequest(svc.Namespace, svc.Name)
+				td.expectExporterReconcile(&svc)
 			})
 
 			It("will export this service as global service", func() {
@@ -69,11 +69,10 @@ var _ = Describe("ServiceExporter", func() {
 			})
 
 			When("this service's global-service marker is removed", func() {
-				Specify("it and endpoints will be recalled", func() {
+				Specify("it and endpoints will be revoked", func() {
 					svc.Labels = nil
 					td.updateObject(&svc)
-					td.receiveRequest(svc.Namespace, svc.Name)
-
+					td.expectExporterReconcile(&svc)
 					td.expectServiceNotExported(&svc)
 				})
 			})
@@ -83,7 +82,7 @@ var _ = Describe("ServiceExporter", func() {
 			It("will be ignored and will not be exported", func() {
 				svc.Labels = nil
 				td.createObject(&svc)
-				td.receiveRequest(svc.Namespace, svc.Name)
+				td.expectExporterReconcile(&svc)
 
 				td.expectServiceNotExported(&svc)
 			})
@@ -168,9 +167,10 @@ var _ = Describe("ServiceExporter", func() {
 		When("it is marked as global-service", func() {
 			BeforeEach(func() {
 				td.createObject(&svc)
+				td.expectExporterReconcile(&svc)
+
 				td.createObject(&endpointslice)
-				td.receiveRequest(svc.Namespace, svc.Name)
-				td.receiveRequest(svc.Namespace, svc.Name)
+				td.expectExporterReconcile(&svc)
 			})
 
 			It("will export this service as global services", func() {
@@ -178,10 +178,10 @@ var _ = Describe("ServiceExporter", func() {
 			})
 
 			When("the global-service marker is removed", func() {
-				Specify("it and endpoints will be recalled", func() {
+				Specify("it and endpoints will be revoked", func() {
 					svc.Labels = nil
 					td.updateObject(&svc)
-					td.receiveRequest(svc.Namespace, svc.Name)
+					td.expectExporterReconcile(&svc)
 
 					td.expectServiceNotExported(&svc)
 				})
@@ -192,7 +192,7 @@ var _ = Describe("ServiceExporter", func() {
 			It("will be ignored and will not be exported", func() {
 				svc.Labels = nil
 				td.createObject(&svc)
-				td.receiveRequest(svc.Namespace, svc.Name)
+				td.expectExporterReconcile(&svc)
 
 				td.expectServiceNotExported(&svc)
 			})
@@ -205,9 +205,11 @@ type testDriver struct {
 	zone    string
 	region  string
 
-	exporter    *serviceExporter
-	manager     manager.Manager
-	requestChan chan reconcile.Request
+	exporter            *serviceExporter
+	exporterRequestChan chan reconcile.Request
+	lostServiceRevoker  *lostServiceRevoker
+	checkerRequestChan  chan reconcile.Request
+	manager             manager.Manager
 
 	exportedGlobalService *apis.GlobalService
 	stopManager           func()
@@ -221,26 +223,34 @@ func newTestDriver() *testDriver {
 	Expect(err).To(BeNil())
 
 	cluster, zone, region := "fabedge", "haidian", "region"
-	exporter := newServiceExporter(Config{
+	cfg := Config{
 		ClusterName: cluster,
 		Zone:        zone,
 		Region:      region,
 		Manager:     mgr,
-	})
+	}
+	exporter := newServiceExporter(cfg)
+	reconciler, exporterReqChan := testutil.WrapReconcile(exporter)
+	Expect(addExporterToManager(mgr, reconciler)).To(Succeed())
 
-	reconciler, reqChan := testutil.WrapReconcile(exporter)
-	Expect(addServiceController(mgr, reconciler)).To(Succeed())
+	revoker := newLostServiceRevoker(cfg)
+	reconciler, checkerReqChan := testutil.WrapReconcile(revoker)
+	Expect(addDiffCheckerToManager(mgr, reconciler)).To(Succeed())
 
 	td := &testDriver{
-		cluster:     cluster,
-		zone:        zone,
-		region:      region,
-		manager:     mgr,
-		exporter:    exporter,
-		requestChan: reqChan,
+		cluster:             cluster,
+		zone:                zone,
+		region:              region,
+		manager:             mgr,
+		exporter:            exporter,
+		exporterRequestChan: exporterReqChan,
+		lostServiceRevoker:  revoker,
+		checkerRequestChan:  checkerReqChan,
 	}
 	exporter.ExportGlobalService = td.exportGlobalService
-	exporter.RecallGlobalService = td.recallGlobalService
+	exporter.RevokeGlobalService = td.revokeGlobalService
+	revoker.ExportGlobalService = td.exportGlobalService
+	revoker.RevokeGlobalService = td.revokeGlobalService
 
 	return td
 }
@@ -276,9 +286,8 @@ func (td *testDriver) exportGlobalService(svc apis.GlobalService) error {
 	return nil
 }
 
-func (td *testDriver) recallGlobalService(clusterName, namespace, name string) error {
+func (td *testDriver) revokeGlobalService(clusterName, namespace, name string) error {
 	Expect(clusterName).To(Equal(td.cluster))
-
 	gs := td.exportedGlobalService
 	if gs == nil {
 		return nil
@@ -322,11 +331,20 @@ func (td *testDriver) teardown() {
 	td.cleanEndpointSlices()
 }
 
-func (td *testDriver) receiveRequest(namespace, name string) {
-	Eventually(td.requestChan, time.Second).Should(Receive(Equal(reconcile.Request{
+func (td *testDriver) expectExporterReconcile(obj client.Object) {
+	Eventually(td.exporterRequestChan, time.Second).Should(Receive(Equal(reconcile.Request{
 		NamespacedName: client.ObjectKey{
-			Name:      name,
-			Namespace: namespace,
+			Name:      obj.GetName(),
+			Namespace: obj.GetNamespace(),
+		},
+	})))
+}
+
+func (td *testDriver) expectRevokerReconcile(obj client.Object) {
+	Eventually(td.checkerRequestChan, time.Second).Should(Receive(Equal(reconcile.Request{
+		NamespacedName: client.ObjectKey{
+			Name:      obj.GetName(),
+			Namespace: obj.GetNamespace(),
 		},
 	})))
 }
