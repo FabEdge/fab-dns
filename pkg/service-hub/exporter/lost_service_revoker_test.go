@@ -9,7 +9,7 @@ import (
 	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
 )
 
-var _ = Describe("DiffChecker", func() {
+var _ = Describe("LostServiceRevoker", func() {
 	Describe("watch global service events for each global service", func() {
 		var (
 			td            *testDriver
@@ -62,7 +62,7 @@ var _ = Describe("DiffChecker", func() {
 			_ = td.exportGlobalService(globalService)
 
 			td.createObject(&globalService)
-			td.expectDiffCheckerReconcile(&globalService)
+			td.expectRevokerReconcile(&globalService)
 		})
 
 		JustAfterEach(func() {

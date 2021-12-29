@@ -207,7 +207,7 @@ type testDriver struct {
 
 	exporter            *serviceExporter
 	exporterRequestChan chan reconcile.Request
-	diffChecker         *diffChecker
+	lostServiceRevoker  *lostServiceRevoker
 	checkerRequestChan  chan reconcile.Request
 	manager             manager.Manager
 
@@ -233,8 +233,8 @@ func newTestDriver() *testDriver {
 	reconciler, exporterReqChan := testutil.WrapReconcile(exporter)
 	Expect(addExporterToManager(mgr, reconciler)).To(Succeed())
 
-	checker := newDiffChecker(cfg)
-	reconciler, checkerReqChan := testutil.WrapReconcile(checker)
+	revoker := newLostServiceRevoker(cfg)
+	reconciler, checkerReqChan := testutil.WrapReconcile(revoker)
 	Expect(addDiffCheckerToManager(mgr, reconciler)).To(Succeed())
 
 	td := &testDriver{
@@ -244,13 +244,13 @@ func newTestDriver() *testDriver {
 		manager:             mgr,
 		exporter:            exporter,
 		exporterRequestChan: exporterReqChan,
-		diffChecker:         checker,
+		lostServiceRevoker:  revoker,
 		checkerRequestChan:  checkerReqChan,
 	}
 	exporter.ExportGlobalService = td.exportGlobalService
 	exporter.RevokeGlobalService = td.revokeGlobalService
-	checker.ExportGlobalService = td.exportGlobalService
-	checker.RevokeGlobalService = td.revokeGlobalService
+	revoker.ExportGlobalService = td.exportGlobalService
+	revoker.RevokeGlobalService = td.revokeGlobalService
 
 	return td
 }
@@ -340,7 +340,7 @@ func (td *testDriver) expectExporterReconcile(obj client.Object) {
 	})))
 }
 
-func (td *testDriver) expectDiffCheckerReconcile(obj client.Object) {
+func (td *testDriver) expectRevokerReconcile(obj client.Object) {
 	Eventually(td.checkerRequestChan, time.Second).Should(Receive(Equal(reconcile.Request{
 		NamespacedName: client.ObjectKey{
 			Name:      obj.GetName(),

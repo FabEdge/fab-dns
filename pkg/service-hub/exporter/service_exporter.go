@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	nameExporter       = "serviceExporter"
-	nameDiffChecker    = "diffChecker"
-	labelGlobalService = "fabedge.io/global-service"
+	nameExporter           = "serviceExporter"
+	nameLostServiceRevoker = "lostServiceRevoker"
+	labelGlobalService     = "fabedge.io/global-service"
 )
 
 type ExportGlobalServiceFunc func(service apis.GlobalService) error
@@ -51,7 +51,7 @@ func AddToManager(cfg Config) error {
 		return err
 	}
 
-	return addDiffCheckerToManager(cfg.Manager, newDiffChecker(cfg))
+	return addDiffCheckerToManager(cfg.Manager, newLostServiceRevoker(cfg))
 }
 
 func newServiceExporter(cfg Config) *serviceExporter {

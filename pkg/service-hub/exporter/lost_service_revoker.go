@@ -14,20 +14,21 @@ import (
 	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
 )
 
-var _ reconcile.Reconciler = &diffChecker{}
+var _ reconcile.Reconciler = &lostServiceRevoker{}
 
-// diffChecker will watch on global services and
-// check if any service should be revoked
-type diffChecker struct {
+// lostServiceRevoker will watch on global services and
+// check if any service should be revoked, lostServiceRevoker
+// mainly revoke service that are deleted or lose global-service label during a reboot
+type lostServiceRevoker struct {
 	Config
 	client client.Client
 	log    logr.Logger
 }
 
-func newDiffChecker(cfg Config) *diffChecker {
-	return &diffChecker{
+func newLostServiceRevoker(cfg Config) *lostServiceRevoker {
+	return &lostServiceRevoker{
 		Config: cfg,
-		log:    cfg.Manager.GetLogger().WithName(nameDiffChecker),
+		log:    cfg.Manager.GetLogger().WithName(nameLostServiceRevoker),
 		client: cfg.Manager.GetClient(),
 	}
 }
@@ -35,11 +36,11 @@ func newDiffChecker(cfg Config) *diffChecker {
 func addDiffCheckerToManager(mgr manager.Manager, reconciler reconcile.Reconciler) error {
 	return ctrlpkg.NewControllerManagedBy(mgr).
 		For(&apis.GlobalService{}).
-		Named(nameDiffChecker).
+		Named(nameLostServiceRevoker).
 		Complete(reconciler)
 }
 
-func (dc diffChecker) Reconcile(ctx context.Context, req reconcile.Request) (result reconcile.Result, err error) {
+func (dc lostServiceRevoker) Reconcile(ctx context.Context, req reconcile.Request) (result reconcile.Result, err error) {
 	log := dc.log.WithValues("request", req)
 	var globalService apis.GlobalService
 	if err = dc.client.Get(ctx, req.NamespacedName, &globalService); err != nil {
@@ -70,7 +71,7 @@ func (dc diffChecker) Reconcile(ctx context.Context, req reconcile.Request) (res
 	return result, nil
 }
 
-func (dc diffChecker) revokeGlobalServiceIfNecessary(globalService apis.GlobalService) error {
+func (dc lostServiceRevoker) revokeGlobalServiceIfNecessary(globalService apis.GlobalService) error {
 	for _, endpoint := range globalService.Spec.Endpoints {
 		if endpoint.Cluster == dc.ClusterName {
 			dc.log.V(5).Info("this service has some expired endpoints, revoke them", "globalService", globalService)
