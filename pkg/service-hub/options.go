@@ -62,7 +62,7 @@ type Options struct {
 	Client       client.Interface
 
 	ExportGlobalService exporter.ExportGlobalServiceFunc
-	RecallGlobalService exporter.RecallGlobalServiceFunc
+	RevokeGlobalService exporter.RevokeGlobalServiceFunc
 }
 
 func (opts *Options) AddFlags(flag *pflag.FlagSet) {
@@ -147,7 +147,7 @@ func (opts *Options) initManager() (err error) {
 func (opts *Options) initAPIServer() (err error) {
 	globalServiceManager := types.NewGlobalServiceManager(opts.Manager.GetClient())
 	opts.ExportGlobalService = globalServiceManager.CreateOrMergeGlobalService
-	opts.RecallGlobalService = globalServiceManager.RecallGlobalService
+	opts.RevokeGlobalService = globalServiceManager.RevokeGlobalService
 
 	opts.APIServer, err = apiserver.New(apiserver.Config{
 		Address:               opts.APIServerListenAddress,
@@ -193,7 +193,7 @@ func (opts *Options) initClient() error {
 	}
 
 	opts.ExportGlobalService = opts.Client.UploadGlobalService
-	opts.RecallGlobalService = func(clusterName, namespace, serviceName string) error {
+	opts.RevokeGlobalService = func(clusterName, namespace, serviceName string) error {
 		return opts.Client.DeleteGlobalService(namespace, serviceName)
 	}
 
@@ -247,7 +247,7 @@ func (opts Options) initManagerRunnables() (err error) {
 		Region:              opts.Region,
 		Manager:             opts.Manager,
 		ExportGlobalService: opts.ExportGlobalService,
-		RecallGlobalService: opts.RecallGlobalService,
+		RevokeGlobalService: opts.RevokeGlobalService,
 	})
 	if err != nil {
 		log.Error(err, "failed to add global service exporter to manager")

@@ -17,7 +17,7 @@ import (
 var _ reconcile.Reconciler = &diffChecker{}
 
 // diffChecker will watch on global services and
-// check if any service should be recalled
+// check if any service should be revoked
 type diffChecker struct {
 	Config
 	client client.Client
@@ -55,7 +55,7 @@ func (dc diffChecker) Reconcile(ctx context.Context, req reconcile.Request) (res
 	var service corev1.Service
 	if err = dc.client.Get(ctx, req.NamespacedName, &service); err != nil {
 		if errors.IsNotFound(err) {
-			return result, dc.recallGlobalServiceIfNecessary(globalService)
+			return result, dc.revokeGlobalServiceIfNecessary(globalService)
 		}
 
 		log.Error(err, "failed to get service")
@@ -63,20 +63,20 @@ func (dc diffChecker) Reconcile(ctx context.Context, req reconcile.Request) (res
 	}
 
 	if !isGlobalService(service.Labels) {
-		log.V(5).Info("service is not exported, try to recall expired endpoints", "service", service)
-		return result, dc.recallGlobalServiceIfNecessary(globalService)
+		log.V(5).Info("service is not exported, try to revoke expired endpoints", "service", service)
+		return result, dc.revokeGlobalServiceIfNecessary(globalService)
 	}
 
 	return result, nil
 }
 
-func (dc diffChecker) recallGlobalServiceIfNecessary(globalService apis.GlobalService) error {
+func (dc diffChecker) revokeGlobalServiceIfNecessary(globalService apis.GlobalService) error {
 	for _, endpoint := range globalService.Spec.Endpoints {
 		if endpoint.Cluster == dc.ClusterName {
-			dc.log.V(5).Info("this service has some expired endpoints, recall them", "globalService", globalService)
-			err := dc.RecallGlobalService(dc.ClusterName, globalService.Namespace, globalService.Name)
+			dc.log.V(5).Info("this service has some expired endpoints, revoke them", "globalService", globalService)
+			err := dc.RevokeGlobalService(dc.ClusterName, globalService.Namespace, globalService.Name)
 			if err != nil {
-				dc.log.Error(err, "failed to recall expired service", "globalService", globalService)
+				dc.log.Error(err, "failed to revoke expired service", "globalService", globalService)
 			}
 		}
 	}

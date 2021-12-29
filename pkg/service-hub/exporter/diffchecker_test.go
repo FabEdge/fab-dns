@@ -26,7 +26,7 @@ var _ = Describe("DiffChecker", func() {
 					Namespace: "default",
 				},
 				Spec: corev1.ServiceSpec{
-					ClusterIP: "10.0.0.1",
+					ClusterIP: "10.0.0.254",
 					Ports: []corev1.ServicePort{
 						{
 							Port:     80,
@@ -86,13 +86,13 @@ var _ = Describe("DiffChecker", func() {
 					td.expectExporterReconcile(&service)
 				})
 
-				It("will recall this service", func() {
+				It("will revoke this service", func() {
 					td.expectServiceNotExported(&service)
 				})
 			})
 
 			When("the service referenced by the endpoint is not found", func() {
-				It("will recall this service", func() {
+				It("will revoke this service", func() {
 					td.expectServiceNotExported(&service)
 				})
 			})

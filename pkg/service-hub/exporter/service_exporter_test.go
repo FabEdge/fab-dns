@@ -69,7 +69,7 @@ var _ = Describe("ServiceExporter", func() {
 			})
 
 			When("this service's global-service marker is removed", func() {
-				Specify("it and endpoints will be recalled", func() {
+				Specify("it and endpoints will be revoked", func() {
 					svc.Labels = nil
 					td.updateObject(&svc)
 					td.expectExporterReconcile(&svc)
@@ -178,7 +178,7 @@ var _ = Describe("ServiceExporter", func() {
 			})
 
 			When("the global-service marker is removed", func() {
-				Specify("it and endpoints will be recalled", func() {
+				Specify("it and endpoints will be revoked", func() {
 					svc.Labels = nil
 					td.updateObject(&svc)
 					td.expectExporterReconcile(&svc)
@@ -248,9 +248,9 @@ func newTestDriver() *testDriver {
 		checkerRequestChan:  checkerReqChan,
 	}
 	exporter.ExportGlobalService = td.exportGlobalService
-	exporter.RecallGlobalService = td.recallGlobalService
+	exporter.RevokeGlobalService = td.revokeGlobalService
 	checker.ExportGlobalService = td.exportGlobalService
-	checker.RecallGlobalService = td.recallGlobalService
+	checker.RevokeGlobalService = td.revokeGlobalService
 
 	return td
 }
@@ -286,7 +286,7 @@ func (td *testDriver) exportGlobalService(svc apis.GlobalService) error {
 	return nil
 }
 
-func (td *testDriver) recallGlobalService(clusterName, namespace, name string) error {
+func (td *testDriver) revokeGlobalService(clusterName, namespace, name string) error {
 	Expect(clusterName).To(Equal(td.cluster))
 	gs := td.exportedGlobalService
 	if gs == nil {
