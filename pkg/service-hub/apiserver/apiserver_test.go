@@ -161,7 +161,7 @@ func newTestDriver() *testDriver {
 		Client:                k8sClient,
 		ClusterStore:          clusterStore,
 		ClusterExpireDuration: 5 * time.Second,
-		GlobalServiceManager:  types.NewGlobalServiceManager(k8sClient),
+		GlobalServiceManager:  types.NewGlobalServiceManager(k8sClient, true),
 	})
 	Expect(err).Should(Succeed())
 

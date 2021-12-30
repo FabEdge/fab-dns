@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
+	nsutil "github.com/FabEdge/fab-dns/pkg/util/namespace"
 )
 
 type GlobalServiceManager interface {
@@ -27,7 +28,8 @@ type GlobalServiceManager interface {
 var _ GlobalServiceManager = &globalServiceManager{}
 
 type globalServiceManager struct {
-	client client.Client
+	allowCreateNamespace bool
+	client               client.Client
 
 	// this lock is used to protect a global service
 	// from being changed by requests simultaneously
@@ -35,9 +37,10 @@ type globalServiceManager struct {
 	lock sync.RWMutex
 }
 
-func NewGlobalServiceManager(cli client.Client) GlobalServiceManager {
+func NewGlobalServiceManager(cli client.Client, allowCreateNamespace bool) GlobalServiceManager {
 	return &globalServiceManager{
-		client: cli,
+		client:               cli,
+		allowCreateNamespace: allowCreateNamespace,
 	}
 }
 
@@ -47,6 +50,12 @@ func (manager *globalServiceManager) CreateOrMergeGlobalService(externalService 
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+
+	if manager.allowCreateNamespace {
+		if err := nsutil.Ensure(ctx, manager.client, externalService.Namespace); err != nil {
+			return err
+		}
+	}
 
 	localService := &apis.GlobalService{
 		ObjectMeta: metav1.ObjectMeta{
@@ -80,14 +89,13 @@ func (manager *globalServiceManager) RevokeGlobalService(clusterName, namespace,
 	manager.lock.Lock()
 	defer manager.lock.Unlock()
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
 	var (
 		svc apis.GlobalService
 		key = client.ObjectKey{Name: serviceName, Namespace: namespace}
 	)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
 	err := manager.client.Get(ctx, key, &svc)
 	if errors.IsNotFound(err) {
 		return nil

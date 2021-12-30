@@ -55,6 +55,7 @@ type Options struct {
 
 	ClusterExpireTime     time.Duration
 	ServiceImportInterval time.Duration
+	AllowCreateNamespace  bool
 
 	Manager      ctrlpkg.Manager
 	ClusterStore *types.ClusterStore
@@ -76,8 +77,10 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringVar(&opts.TLSKeyFile, "tls-key-file", "", "The key file for API server/client")
 	flag.StringVar(&opts.TLSCertFile, "tls-cert-file", "", "The cert file for API server/client")
 	flag.StringVar(&opts.TLSCACertFile, "tls-ca-cert-file", "", "The CA cert file for API server/client")
+
 	flag.DurationVar(&opts.ClusterExpireTime, "cluster-expire-duration", 5*time.Minute, "Expiration time after cluster stops heartbeat")
 	flag.DurationVar(&opts.ServiceImportInterval, "service-import-interval", time.Minute, "The interval between each services importing routine")
+	flag.BoolVar(&opts.AllowCreateNamespace, "allow-create-namespace", true, "Determine if service-hub are allowed to create namespace if needed")
 }
 
 func (opts Options) Validate() error {
@@ -145,7 +148,7 @@ func (opts *Options) initManager() (err error) {
 }
 
 func (opts *Options) initAPIServer() (err error) {
-	globalServiceManager := types.NewGlobalServiceManager(opts.Manager.GetClient())
+	globalServiceManager := types.NewGlobalServiceManager(opts.Manager.GetClient(), opts.AllowCreateNamespace)
 	opts.ExportGlobalService = globalServiceManager.CreateOrMergeGlobalService
 	opts.RevokeGlobalService = globalServiceManager.RevokeGlobalService
 
