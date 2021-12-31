@@ -19,6 +19,7 @@ import (
 
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
@@ -38,6 +39,15 @@ func PurgeAllServices(cli client.Client, opts ...client.ListOption) {
 	Expect(cli.List(context.TODO(), &services)).To(Succeed())
 
 	for _, obj := range services.Items {
+		Expect(cli.Delete(context.TODO(), &obj)).To(Succeed())
+	}
+}
+
+func PurgeAllEndpointSlices(cli client.Client, opts ...client.ListOption) {
+	var endpointslices discoveryv1.EndpointSliceList
+	Expect(cli.List(context.TODO(), &endpointslices)).To(Succeed())
+
+	for _, obj := range endpointslices.Items {
 		Expect(cli.Delete(context.TODO(), &obj)).To(Succeed())
 	}
 }

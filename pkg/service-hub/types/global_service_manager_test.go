@@ -6,13 +6,11 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
 	"github.com/FabEdge/fab-dns/pkg/service-hub/types"
-	nsutil "github.com/FabEdge/fab-dns/pkg/util/namespace"
 	testutil "github.com/FabEdge/fab-dns/pkg/util/test"
 )
 
@@ -125,7 +123,7 @@ var _ = Describe("GlobalServiceManager", func() {
 				})
 
 				It("will create the namespace to which global service belongs", func() {
-					td.expectNamespaceExists(workNamespace)
+					testutil.ExpectNamespaceExists(k8sClient, workNamespace)
 				})
 
 				It("will create a corresponding global service", func() {
@@ -153,7 +151,7 @@ var _ = Describe("GlobalServiceManager", func() {
 				})
 
 				It("namespace will not be created", func() {
-					td.expectNamespaceNotExists(workNamespace)
+					testutil.ExpectNamespaceNotExists(k8sClient, workNamespace)
 				})
 			})
 
@@ -288,28 +286,15 @@ func (td *testDriver) revokeGlobalService(svc apis.GlobalService) {
 }
 
 func (td *testDriver) getService() apis.GlobalService {
-	var svc apis.GlobalService
-
-	err := k8sClient.Get(context.Background(), client.ObjectKey{Name: td.serviceName, Namespace: td.namespace}, &svc)
-	Expect(err).To(Succeed())
-
-	return svc
+	return testutil.ExpectGetGlobalService(k8sClient, client.ObjectKey{Name: td.serviceName, Namespace: td.namespace})
 }
 
 func (td *testDriver) expectServiceNotFound() {
-	var svc apis.GlobalService
-
-	err := k8sClient.Get(context.Background(), client.ObjectKey{Name: td.serviceName, Namespace: td.namespace}, &svc)
-	Expect(errors.IsNotFound(err)).To(BeTrue())
+	testutil.ExpectGlobalServiceNotFound(k8sClient, client.ObjectKey{Name: td.serviceName, Namespace: td.namespace})
 }
 
 func (td *testDriver) clearServices() {
-	var services apis.GlobalServiceList
-	Expect(k8sClient.List(context.Background(), &services)).To(Succeed())
-
-	for _, svc := range services.Items {
-		Expect(k8sClient.Delete(context.Background(), &svc)).To(Succeed())
-	}
+	testutil.PurgeAllGlobalServices(k8sClient)
 }
 
 func (td *testDriver) createNamespace(name string) {
@@ -330,16 +315,4 @@ func (td *testDriver) deleteNamespace(name string) {
 	}
 
 	Expect(k8sClient.Delete(context.Background(), &ns)).To(Succeed())
-}
-
-func (td *testDriver) expectNamespaceExists(name string) {
-	exists, err := nsutil.Exists(context.Background(), k8sClient, name)
-	Expect(err).To(Succeed())
-	Expect(exists).To(BeTrue())
-}
-
-func (td *testDriver) expectNamespaceNotExists(name string) {
-	exists, err := nsutil.Exists(context.Background(), k8sClient, name)
-	Expect(err).To(Succeed())
-	Expect(exists).To(BeFalse())
 }

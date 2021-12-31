@@ -300,35 +300,11 @@ func (td *testDriver) revokeGlobalService(clusterName, namespace, name string) e
 	return nil
 }
 
-func (td *testDriver) cleanServices() {
-	var serviceList corev1.ServiceList
-	Expect(k8sClient.List(context.TODO(), &serviceList)).To(Succeed())
-	for _, svc := range serviceList.Items {
-		Expect(k8sClient.Delete(context.Background(), &svc)).To(Succeed())
-	}
-}
-
-func (td *testDriver) cleanGlobalServices() {
-	var serviceList apis.GlobalServiceList
-	Expect(k8sClient.List(context.TODO(), &serviceList)).To(Succeed())
-	for _, svc := range serviceList.Items {
-		Expect(k8sClient.Delete(context.Background(), &svc)).To(Succeed())
-	}
-}
-
-func (td *testDriver) cleanEndpointSlices() {
-	var endpointSlices discoveryv1.EndpointSliceList
-	Expect(k8sClient.List(context.TODO(), &endpointSlices)).To(Succeed())
-	for _, es := range endpointSlices.Items {
-		Expect(k8sClient.Delete(context.Background(), &es)).To(Succeed())
-	}
-}
-
 func (td *testDriver) teardown() {
 	td.stopManager()
-	td.cleanServices()
-	td.cleanGlobalServices()
-	td.cleanEndpointSlices()
+	testutil.PurgeAllGlobalServices(k8sClient)
+	testutil.PurgeAllServices(k8sClient)
+	testutil.PurgeAllEndpointSlices(k8sClient)
 }
 
 func (td *testDriver) expectExporterReconcile(obj client.Object) {

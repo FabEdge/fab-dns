@@ -99,8 +99,7 @@ var _ = Describe("GlobalServiceImporter", func() {
 			})
 
 			It("will create namespace if it does not exist", func() {
-				key := client.ObjectKey{Name: workNamespace}
-				Expect(k8sClient.Get(context.Background(), key, &corev1.Namespace{})).To(Succeed())
+				testutil.ExpectNamespaceExists(k8sClient, workNamespace)
 			})
 
 			It("create global service", func() {
@@ -127,9 +126,7 @@ var _ = Describe("GlobalServiceImporter", func() {
 				globalService, serviceKey = makeupGlobalServiceNginx(getNamespace())
 				importer.createOrUpdateGlobalService(globalService)
 
-				key := client.ObjectKey{Name: workNamespace}
-				err := k8sClient.Get(context.Background(), key, &corev1.Namespace{})
-				Expect(errors.IsNotFound(err)).To(BeTrue())
+				testutil.ExpectNamespaceNotExists(k8sClient, workNamespace)
 			})
 
 			When("namespace exists", func() {
@@ -144,8 +141,8 @@ var _ = Describe("GlobalServiceImporter", func() {
 				It("won't save global service", func() {
 					globalService, serviceKey = makeupGlobalServiceNginx(getNamespace())
 					importer.createOrUpdateGlobalService(globalService)
-					err := k8sClient.Get(context.Background(), serviceKey, &apis.GlobalService{})
-					Expect(errors.IsNotFound(err))
+
+					testutil.ExpectGlobalServiceNotFound(k8sClient, serviceKey)
 				})
 			})
 		})
@@ -249,14 +246,11 @@ func changeServicePorts(svc *apis.GlobalService) {
 }
 
 func expectGlobalServiceSaved(expectedService apis.GlobalService) {
-	var (
-		savedService apis.GlobalService
-		key          = client.ObjectKey{
-			Name:      expectedService.Name,
-			Namespace: expectedService.Namespace,
-		}
-	)
-	Expect(k8sClient.Get(context.Background(), key, &savedService)).To(Succeed())
+	key := client.ObjectKey{
+		Name:      expectedService.Name,
+		Namespace: expectedService.Namespace,
+	}
+	savedService := testutil.ExpectGetGlobalService(k8sClient, key)
 	Expect(savedService.Labels).To(HaveKeyWithValue(constants.KeyOriginResourceVersion, expectedService.ResourceVersion))
 	Expect(savedService.Spec).To(Equal(expectedService.Spec))
 }
