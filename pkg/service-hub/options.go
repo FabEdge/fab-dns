@@ -234,9 +234,10 @@ func (opts Options) initManagerRunnables() (err error) {
 		}
 	} else {
 		err = importer.AddToManager(importer.Config{
-			Interval:          opts.ServiceImportInterval,
-			Manager:           opts.Manager,
-			GetGlobalServices: opts.Client.DownloadAllGlobalServices,
+			Interval:             opts.ServiceImportInterval,
+			Manager:              opts.Manager,
+			GetGlobalServices:    opts.Client.DownloadAllGlobalServices,
+			AllowCreateNamespace: opts.AllowCreateNamespace,
 		})
 		if err != nil {
 			log.Error(err, "failed to add service importer")

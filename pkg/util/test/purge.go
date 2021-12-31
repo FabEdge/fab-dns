@@ -17,70 +17,27 @@ package test
 import (
 	"context"
 
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
 )
 
-func PurgeAllSecrets(cli client.Client, opts ...client.ListOption) error {
-	var secrets corev1.SecretList
-	err := cli.List(context.TODO(), &secrets)
-	if err != nil {
-		return err
-	}
+func PurgeAllGlobalServices(cli client.Client, opts ...client.ListOption) {
+	var gss apis.GlobalServiceList
+	Expect(cli.List(context.TODO(), &gss)).To(Succeed())
 
-	for _, secret := range secrets.Items {
-		if err := cli.Delete(context.TODO(), &secret); err != nil {
-			return err
-		}
+	for _, gs := range gss.Items {
+		Expect(cli.Delete(context.TODO(), &gs)).To(Succeed())
 	}
-
-	return nil
 }
 
-func PurgeAllConfigMaps(cli client.Client, opts ...client.ListOption) error {
-	var configs corev1.ConfigMapList
-	err := cli.List(context.TODO(), &configs)
-	if err != nil {
-		return err
+func PurgeAllServices(cli client.Client, opts ...client.ListOption) {
+	var services corev1.ServiceList
+	Expect(cli.List(context.TODO(), &services)).To(Succeed())
+
+	for _, obj := range services.Items {
+		Expect(cli.Delete(context.TODO(), &obj)).To(Succeed())
 	}
-
-	for _, secret := range configs.Items {
-		if err := cli.Delete(context.TODO(), &secret); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func PurgeAllPods(cli client.Client, opts ...client.ListOption) error {
-	var pods corev1.PodList
-	err := cli.List(context.TODO(), &pods)
-	if err != nil {
-		return err
-	}
-
-	for _, secret := range pods.Items {
-		if err := cli.Delete(context.TODO(), &secret); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func PurgeAllNodes(cli client.Client, opts ...client.ListOption) error {
-	var nodes corev1.NodeList
-	err := cli.List(context.TODO(), &nodes)
-	if err != nil {
-		return err
-	}
-
-	for _, secret := range nodes.Items {
-		if err := cli.Delete(context.TODO(), &secret); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
