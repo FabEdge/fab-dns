@@ -12,13 +12,15 @@ import (
 	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
 	"github.com/FabEdge/fab-dns/pkg/constants"
 	"github.com/FabEdge/fab-dns/pkg/service-hub/types"
+	nsutil "github.com/FabEdge/fab-dns/pkg/util/namespace"
 )
 
 type GetGlobalServicesFunc func() ([]apis.GlobalService, error)
 type Config struct {
-	Interval          time.Duration
-	Manager           ctrlpkg.Manager
-	GetGlobalServices GetGlobalServicesFunc
+	Interval             time.Duration
+	Manager              ctrlpkg.Manager
+	GetGlobalServices    GetGlobalServicesFunc
+	AllowCreateNamespace bool
 }
 
 func AddToManager(cfg Config) error {
@@ -81,6 +83,13 @@ func (importer *globalServiceImporter) importServices() {
 func (importer *globalServiceImporter) createOrUpdateGlobalService(sourceService apis.GlobalService) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+
+	if importer.AllowCreateNamespace {
+		if err := nsutil.Ensure(ctx, importer.client, sourceService.Namespace); err != nil {
+			importer.log.Error(err, "failed to create namespace", "namespace", sourceService.Namespace)
+			return
+		}
+	}
 
 	service := &apis.GlobalService{
 		ObjectMeta: metav1.ObjectMeta{

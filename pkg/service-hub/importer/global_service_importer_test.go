@@ -15,117 +15,134 @@ import (
 
 	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
 	"github.com/FabEdge/fab-dns/pkg/constants"
+	testutil "github.com/FabEdge/fab-dns/pkg/util/test"
 )
 
 var _ = Describe("GlobalServiceImporter", func() {
-	Describe("can import services returned by GetGlobalServices passed in", func() {
-		var (
-			importer       *globalServiceImporter
-			sourceServices *globalServices
-		)
+	var (
+		importer             *globalServiceImporter
+		sourceServices       *globalServices
+		allowCreateNameSpace = true
+		workNamespace        = "default"
+		getNamespace         = testutil.GenerateGetNameFunc("not-exist")
+	)
 
-		BeforeEach(func() {
-			sourceServices = &globalServices{}
-			importer = &globalServiceImporter{
-				Config: Config{
-					Interval:          time.Second,
-					GetGlobalServices: sourceServices.GetServices,
-				},
-				client: k8sClient,
-				log:    ctrlpkg.Log,
-			}
-		})
+	JustBeforeEach(func() {
+		sourceServices = &globalServices{}
+		importer = &globalServiceImporter{
+			Config: Config{
+				Interval:             time.Second,
+				GetGlobalServices:    sourceServices.GetServices,
+				AllowCreateNamespace: allowCreateNameSpace,
+			},
+			client: k8sClient,
+			log:    ctrlpkg.Log,
+		}
+	})
 
+	JustAfterEach(func() {
+		testutil.PurgeAllGlobalServices(k8sClient)
+	})
+
+	Describe("importServices", func() {
 		When("a local counterpart does not exist", func() {
 			var (
-				importedService apis.GlobalService
-				serviceKey      client.ObjectKey
+				serviceToImport, serviceToDelete       apis.GlobalService
+				serviceKeyToImport, serviceKeyToDelete client.ObjectKey
 			)
 
-			BeforeEach(func() {
-				importedService = apis.GlobalService{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:            "nginx",
-						Namespace:       "default",
-						ResourceVersion: "123456",
-					},
-					Spec: apis.GlobalServiceSpec{
-						Type: apis.ClusterIP,
-						Ports: []apis.ServicePort{
-							{
-								Name:     "web",
-								Port:     80,
-								Protocol: corev1.ProtocolTCP,
-							},
-						},
-						Endpoints: []apis.Endpoint{
-							{
-								Cluster:   "fabedge",
-								Zone:      "haidian",
-								Region:    "beijing",
-								Addresses: []string{"192.168.1.1"},
-							},
-						},
-					},
-				}
-				serviceKey = keyFromObject(&importedService)
+			JustBeforeEach(func() {
+				serviceToImport, serviceKeyToImport = makeupGlobalServiceNginx(workNamespace)
+				sourceServices.AddService(serviceToImport)
 
-				sourceServices.AddService(importedService)
+				serviceToDelete, serviceKeyToDelete = makeupGlobalService("to-delete", workNamespace)
+				importer.createOrUpdateGlobalService(serviceToDelete)
+
 				importer.importServices()
 			})
 
-			It("will create this global service under the same namespace", func() {
+			It("will save global services", func() {
 				var localService apis.GlobalService
-
 				Eventually(func() error {
-					return k8sClient.Get(context.Background(), serviceKey, &localService)
+					return k8sClient.Get(context.Background(), serviceKeyToImport, &localService)
 				}).Should(Succeed())
-				Expect(localService.Labels).To(HaveKeyWithValue(constants.KeyOriginResourceVersion, importedService.ResourceVersion))
-				Expect(localService.Spec).To(Equal(importedService.Spec))
+				expectGlobalServiceSaved(serviceToImport)
 			})
 
-			When("imported service is different from local counterpart", func() {
-				BeforeEach(func() {
-					importedService.ResourceVersion = "1234567"
-					importedService.Spec.Ports = []apis.ServicePort{
-						{
-							Name:     "web",
-							Port:     80,
-							Protocol: corev1.ProtocolTCP,
-						},
-						{
-							Name:     "health",
-							Port:     8080,
-							Protocol: corev1.ProtocolTCP,
-						},
-					}
-					sourceServices.AddService(importedService)
-					importer.importServices()
-				})
+			It("will delete global services not imported anymore", func() {
+				Eventually(func() bool {
+					err := k8sClient.Get(context.Background(), serviceKeyToDelete, &apis.GlobalService{})
+					return errors.IsNotFound(err)
+				}).Should(BeTrue(), "should get a not found error")
+			})
+		})
+	})
 
-				It("will update the local counterpart", func() {
-					var localService apis.GlobalService
+	Describe("createOrUpdateGlobalService", func() {
+		var (
+			globalService apis.GlobalService
+			serviceKey    client.ObjectKey
+		)
 
-					Eventually(func() []apis.ServicePort {
-						_ = k8sClient.Get(context.Background(), serviceKey, &localService)
-						return localService.Spec.Ports
-					}).Should(Equal(importedService.Spec.Ports))
+		BeforeEach(func() {
+			workNamespace = getNamespace()
+		})
+
+		AfterEach(func() {
+			workNamespace = "default"
+		})
+
+		Context("when are allowed to create namespace", func() {
+			JustBeforeEach(func() {
+				globalService, serviceKey = makeupGlobalServiceNginx(workNamespace)
+				importer.createOrUpdateGlobalService(globalService)
+			})
+
+			It("will create namespace if it does not exist", func() {
+				testutil.ExpectNamespaceExists(k8sClient, workNamespace)
+			})
+
+			It("create global service", func() {
+				expectGlobalServiceSaved(globalService)
+			})
+
+			It("can update the global service", func() {
+				changeServicePorts(&globalService)
+				importer.createOrUpdateGlobalService(globalService)
+				expectGlobalServiceSaved(globalService)
+			})
+		})
+
+		Context("when are not allowed to create namespace", func() {
+			BeforeEach(func() {
+				allowCreateNameSpace = false
+			})
+
+			AfterEach(func() {
+				allowCreateNameSpace = true
+			})
+
+			It("won't create namespace", func() {
+				globalService, serviceKey = makeupGlobalServiceNginx(getNamespace())
+				importer.createOrUpdateGlobalService(globalService)
+
+				testutil.ExpectNamespaceNotExists(k8sClient, workNamespace)
+			})
+
+			When("namespace exists", func() {
+				It("save global service", func() {
+					globalService, serviceKey = makeupGlobalServiceNginx("default")
+					importer.createOrUpdateGlobalService(globalService)
+					expectGlobalServiceSaved(globalService)
 				})
 			})
 
-			When("a previous imported global service is gone", func() {
-				BeforeEach(func() {
-					sourceServices.Remove(importedService)
-					importer.importServices()
-				})
+			When("namespace does not exist", func() {
+				It("won't save global service", func() {
+					globalService, serviceKey = makeupGlobalServiceNginx(getNamespace())
+					importer.createOrUpdateGlobalService(globalService)
 
-				It("will delete its local counterpart", func() {
-					var localService apis.GlobalService
-
-					Eventually(func() bool {
-						err := k8sClient.Get(context.Background(), serviceKey, &localService)
-						return errors.IsNotFound(err)
-					}).Should(BeTrue(), "should get a not found error")
+					testutil.ExpectGlobalServiceNotFound(k8sClient, serviceKey)
 				})
 			})
 		})
@@ -176,4 +193,64 @@ func (gss *globalServices) GetServices() ([]apis.GlobalService, error) {
 	}
 
 	return services, nil
+}
+
+func makeupGlobalServiceNginx(namespace string) (apis.GlobalService, client.ObjectKey) {
+	return makeupGlobalService("nginx", namespace)
+}
+
+func makeupGlobalService(name, namespace string) (apis.GlobalService, client.ObjectKey) {
+	gs := apis.GlobalService{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			Namespace:       namespace,
+			ResourceVersion: "123456",
+		},
+		Spec: apis.GlobalServiceSpec{
+			Type: apis.ClusterIP,
+			Ports: []apis.ServicePort{
+				{
+					Name:     "web",
+					Port:     80,
+					Protocol: corev1.ProtocolTCP,
+				},
+			},
+			Endpoints: []apis.Endpoint{
+				{
+					Cluster:   "fabedge",
+					Zone:      "haidian",
+					Region:    "beijing",
+					Addresses: []string{"192.168.1.1"},
+				},
+			},
+		},
+	}
+
+	return gs, keyFromObject(&gs)
+}
+
+func changeServicePorts(svc *apis.GlobalService) {
+	svc.ResourceVersion = "1234567"
+	svc.Spec.Ports = []apis.ServicePort{
+		{
+			Name:     "web",
+			Port:     80,
+			Protocol: corev1.ProtocolTCP,
+		},
+		{
+			Name:     "health",
+			Port:     8080,
+			Protocol: corev1.ProtocolTCP,
+		},
+	}
+}
+
+func expectGlobalServiceSaved(expectedService apis.GlobalService) {
+	key := client.ObjectKey{
+		Name:      expectedService.Name,
+		Namespace: expectedService.Namespace,
+	}
+	savedService := testutil.ExpectGetGlobalService(k8sClient, key)
+	Expect(savedService.Labels).To(HaveKeyWithValue(constants.KeyOriginResourceVersion, expectedService.ResourceVersion))
+	Expect(savedService.Spec).To(Equal(expectedService.Spec))
 }

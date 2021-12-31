@@ -6,104 +6,166 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
 	"github.com/FabEdge/fab-dns/pkg/service-hub/types"
+	testutil "github.com/FabEdge/fab-dns/pkg/util/test"
 )
 
 var _ = Describe("GlobalServiceManager", func() {
 	var (
-		td                  *testDriver
-		serviceFromBeijing  apis.GlobalService
-		serviceFromShanghai apis.GlobalService
+		td                   *testDriver
+		serviceFromBeijing   apis.GlobalService
+		serviceFromShanghai  apis.GlobalService
+		allowCreateNamespace = true
+		workNamespace        = "default"
+		getNamespace         = testutil.GenerateGetNameFunc("not-exist")
 	)
 
-	BeforeEach(func() {
-		td = newTestDriver()
+	JustBeforeEach(func() {
+		td = newTestDriver(allowCreateNamespace, workNamespace)
 		serviceFromBeijing = td.serviceFromBeijing
 		serviceFromShanghai = td.serviceFromShanghai
 	})
 
-	AfterEach(func() {
+	JustAfterEach(func() {
 		td.clearServices()
+		allowCreateNamespace = true
+		workNamespace = "default"
 	})
 
-	When("CreateOrMergeGlobalService is called", func() {
-		Context("the corresponding global service does not exist", func() {
-			It("will create a corresponding global service under the same namespace", func() {
-				td.createOrMergeGlobalService(td.serviceFromBeijing)
-				service := td.getService()
-				Expect(service.Spec.Type).To(Equal(serviceFromBeijing.Spec.Type))
-				Expect(service.Spec.Ports).To(Equal(serviceFromBeijing.Spec.Ports))
-				Expect(service.Spec.Endpoints).To(Equal(serviceFromBeijing.Spec.Endpoints))
+	Describe("CreateOrMergeGlobalService", func() {
+		Context("manager are allowed to create namespace", func() {
+			When("namespace exists", func() {
+				Context("the corresponding global service does not exist", func() {
+					It("will create a corresponding global service under the same namespace", func() {
+						td.createOrMergeGlobalService(td.serviceFromBeijing)
+						service := td.getService()
+						Expect(service.Spec.Type).To(Equal(serviceFromBeijing.Spec.Type))
+						Expect(service.Spec.Ports).To(Equal(serviceFromBeijing.Spec.Ports))
+						Expect(service.Spec.Endpoints).To(Equal(serviceFromBeijing.Spec.Endpoints))
+					})
+				})
+
+				Context("the corresponding global service exists", func() {
+					JustBeforeEach(func() {
+						td.createOrMergeGlobalService(td.serviceFromBeijing)
+						td.createOrMergeGlobalService(td.serviceFromShanghai)
+					})
+
+					It("will update ports from request", func() {
+						service := td.getService()
+						Expect(service.Spec.Ports).To(Equal(serviceFromShanghai.Spec.Ports))
+						Expect(service.Spec.Ports).NotTo(Equal(serviceFromBeijing.Spec.Ports))
+					})
+
+					It("will append endpoints from request", func() {
+						service := td.getService()
+						Expect(service.Spec.Endpoints).To(ConsistOf(
+							serviceFromBeijing.Spec.Endpoints[0],
+							serviceFromShanghai.Spec.Endpoints[0],
+						))
+					})
+
+					When("endpoints of the new service are different from old endpoints", func() {
+						It("will remove old endpoints and append new endpoints", func() {
+							serviceFromShanghai.Spec.Endpoints = []apis.Endpoint{
+								{
+									Cluster:   "shanghai",
+									Region:    "south",
+									Zone:      "shanghai",
+									Addresses: []string{"192.168.1.3"},
+									TargetRef: &corev1.ObjectReference{
+										Kind:      "Service",
+										Name:      td.serviceName,
+										Namespace: td.namespace,
+									},
+								},
+								{
+									Cluster:   "shanghai",
+									Region:    "south",
+									Zone:      "shanghai",
+									Addresses: []string{"192.168.1.4"},
+									TargetRef: &corev1.ObjectReference{
+										Kind:      "Service",
+										Name:      td.serviceName,
+										Namespace: td.namespace,
+									},
+								},
+							}
+							td.createOrMergeGlobalService(serviceFromShanghai)
+
+							service := td.getService()
+							Expect(service.Spec.Ports).To(Equal(serviceFromShanghai.Spec.Ports))
+							Expect(service.Spec.Endpoints).To(ConsistOf(
+								serviceFromBeijing.Spec.Endpoints[0],
+								serviceFromShanghai.Spec.Endpoints[0],
+								serviceFromShanghai.Spec.Endpoints[1],
+							))
+						})
+					})
+				})
+			})
+
+			When("namespace does not exist", func() {
+				BeforeEach(func() {
+					workNamespace = getNamespace()
+				})
+
+				JustBeforeEach(func() {
+					td.createOrMergeGlobalService(serviceFromBeijing)
+				})
+
+				JustAfterEach(func() {
+					td.deleteNamespace(workNamespace)
+				})
+
+				It("will create the namespace to which global service belongs", func() {
+					testutil.ExpectNamespaceExists(k8sClient, workNamespace)
+				})
+
+				It("will create a corresponding global service", func() {
+					_ = td.getService()
+				})
 			})
 		})
 
-		Context("the corresponding global service exists", func() {
+		Context("manager are not to create namespace", func() {
 			BeforeEach(func() {
-				td.createOrMergeGlobalService(td.serviceFromBeijing)
-				td.createOrMergeGlobalService(td.serviceFromShanghai)
+				allowCreateNamespace = false
 			})
 
-			It("will update ports from request", func() {
-				service := td.getService()
-				Expect(service.Spec.Ports).To(Equal(serviceFromShanghai.Spec.Ports))
-				Expect(service.Spec.Ports).NotTo(Equal(serviceFromBeijing.Spec.Ports))
+			Context("namespace does not exist", func() {
+				BeforeEach(func() {
+					workNamespace = getNamespace()
+				})
+
+				JustBeforeEach(func() {
+					Expect(td.manager.CreateOrMergeGlobalService(serviceFromBeijing)).To(HaveOccurred())
+				})
+
+				It("global service will not be created", func() {
+					td.expectServiceNotFound()
+				})
+
+				It("namespace will not be created", func() {
+					testutil.ExpectNamespaceNotExists(k8sClient, workNamespace)
+				})
 			})
 
-			It("will append endpoints from request", func() {
-				service := td.getService()
-				Expect(service.Spec.Endpoints).To(ConsistOf(
-					serviceFromBeijing.Spec.Endpoints[0],
-					serviceFromShanghai.Spec.Endpoints[0],
-				))
-			})
-
-			When("endpoints of the new service are different from old endpoints", func() {
-				It("will remove old endpoints and append new endpoints", func() {
-					serviceFromShanghai.Spec.Endpoints = []apis.Endpoint{
-						{
-							Cluster:   "shanghai",
-							Region:    "south",
-							Zone:      "shanghai",
-							Addresses: []string{"192.168.1.3"},
-							TargetRef: &corev1.ObjectReference{
-								Kind:      "Service",
-								Name:      td.serviceName,
-								Namespace: td.namespace,
-							},
-						},
-						{
-							Cluster:   "shanghai",
-							Region:    "south",
-							Zone:      "shanghai",
-							Addresses: []string{"192.168.1.4"},
-							TargetRef: &corev1.ObjectReference{
-								Kind:      "Service",
-								Name:      td.serviceName,
-								Namespace: td.namespace,
-							},
-						},
-					}
-					td.createOrMergeGlobalService(serviceFromShanghai)
-
-					service := td.getService()
-					Expect(service.Spec.Ports).To(Equal(serviceFromShanghai.Spec.Ports))
-					Expect(service.Spec.Endpoints).To(ConsistOf(
-						serviceFromBeijing.Spec.Endpoints[0],
-						serviceFromShanghai.Spec.Endpoints[0],
-						serviceFromShanghai.Spec.Endpoints[1],
-					))
+			Context("namespace exists", func() {
+				It("global service will be created", func() {
+					td.createOrMergeGlobalService(td.serviceFromBeijing)
+					_ = td.getService()
 				})
 			})
 		})
 	})
 
-	When("RevokeGlobalService is called", func() {
-		BeforeEach(func() {
+	Describe("RevokeGlobalService", func() {
+		JustBeforeEach(func() {
 			td.createOrMergeGlobalService(serviceFromBeijing)
 			td.createOrMergeGlobalService(serviceFromShanghai)
 			td.revokeGlobalService(serviceFromBeijing)
@@ -117,7 +179,7 @@ var _ = Describe("GlobalServiceManager", func() {
 
 		It("the global service will be deleted if no endpoints are left", func() {
 			td.revokeGlobalService(serviceFromShanghai)
-			td.ExpectServiceNotFound()
+			td.expectServiceNotFound()
 		})
 
 		It("will just return without error if target global service not found", func() {
@@ -141,8 +203,8 @@ type testDriver struct {
 	namespace   string
 }
 
-func newTestDriver() *testDriver {
-	serviceName, namespace := "nginx", "default"
+func newTestDriver(allowCreateNamespace bool, namespace string) *testDriver {
+	serviceName := "nginx"
 
 	serviceFromBeijing := apis.GlobalService{
 		ObjectMeta: metav1.ObjectMeta{
@@ -209,7 +271,7 @@ func newTestDriver() *testDriver {
 	return &testDriver{
 		serviceName:         serviceName,
 		namespace:           namespace,
-		manager:             types.NewGlobalServiceManager(k8sClient),
+		manager:             types.NewGlobalServiceManager(k8sClient, allowCreateNamespace),
 		serviceFromBeijing:  serviceFromBeijing,
 		serviceFromShanghai: serviceFromShanghai,
 	}
@@ -224,28 +286,15 @@ func (td *testDriver) revokeGlobalService(svc apis.GlobalService) {
 }
 
 func (td *testDriver) getService() apis.GlobalService {
-	var svc apis.GlobalService
-
-	err := k8sClient.Get(context.Background(), client.ObjectKey{Name: td.serviceName, Namespace: td.namespace}, &svc)
-	Expect(err).To(Succeed())
-
-	return svc
+	return testutil.ExpectGetGlobalService(k8sClient, client.ObjectKey{Name: td.serviceName, Namespace: td.namespace})
 }
 
-func (td *testDriver) ExpectServiceNotFound() {
-	var svc apis.GlobalService
-
-	err := k8sClient.Get(context.Background(), client.ObjectKey{Name: td.serviceName, Namespace: td.namespace}, &svc)
-	Expect(errors.IsNotFound(err)).To(BeTrue())
+func (td *testDriver) expectServiceNotFound() {
+	testutil.ExpectGlobalServiceNotFound(k8sClient, client.ObjectKey{Name: td.serviceName, Namespace: td.namespace})
 }
 
 func (td *testDriver) clearServices() {
-	var services apis.GlobalServiceList
-	Expect(k8sClient.List(context.Background(), &services)).To(Succeed())
-
-	for _, svc := range services.Items {
-		Expect(k8sClient.Delete(context.Background(), &svc)).To(Succeed())
-	}
+	testutil.PurgeAllGlobalServices(k8sClient)
 }
 
 func (td *testDriver) createNamespace(name string) {
