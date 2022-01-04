@@ -23,17 +23,14 @@ const (
 	labelGlobalService     = "fabedge.io/global-service"
 )
 
-type ExportGlobalServiceFunc func(service apis.GlobalService) error
-type RevokeGlobalServiceFunc func(clusterName, namespace, serviceName string) error
-
 type Config struct {
 	ClusterName string
 	Zone        string
 	Region      string
 
 	Manager             manager.Manager
-	ExportGlobalService ExportGlobalServiceFunc
-	RevokeGlobalService RevokeGlobalServiceFunc
+	ExportGlobalService types.ExportGlobalServiceFunc
+	RevokeGlobalService types.RevokeGlobalServiceFunc
 }
 
 var _ reconcile.Reconciler = &serviceExporter{}

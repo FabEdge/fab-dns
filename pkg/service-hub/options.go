@@ -15,12 +15,14 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2/klogr"
 	ctrlpkg "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
 	"github.com/FabEdge/fab-dns/pkg/service-hub/apiserver"
-	"github.com/FabEdge/fab-dns/pkg/service-hub/client"
+	"github.com/FabEdge/fab-dns/pkg/service-hub/cleaner"
+	fclient "github.com/FabEdge/fab-dns/pkg/service-hub/client"
 	"github.com/FabEdge/fab-dns/pkg/service-hub/exporter"
 	"github.com/FabEdge/fab-dns/pkg/service-hub/importer"
 	"github.com/FabEdge/fab-dns/pkg/service-hub/types"
@@ -60,10 +62,10 @@ type Options struct {
 	Manager      ctrlpkg.Manager
 	ClusterStore *types.ClusterStore
 	APIServer    *http.Server
-	Client       client.Interface
+	Client       fclient.Interface
 
-	ExportGlobalService exporter.ExportGlobalServiceFunc
-	RevokeGlobalService exporter.RevokeGlobalServiceFunc
+	ExportGlobalService types.ExportGlobalServiceFunc
+	RevokeGlobalService types.RevokeGlobalServiceFunc
 }
 
 func (opts *Options) AddFlags(flag *pflag.FlagSet) {
@@ -184,7 +186,7 @@ func (opts *Options) initClient() error {
 		return err
 	}
 
-	opts.Client, err = client.NewClient(opts.APIServerAddress, opts.Cluster, &http.Transport{
+	opts.Client, err = fclient.NewClient(opts.APIServerAddress, opts.Cluster, &http.Transport{
 		TLSClientConfig: &tls.Config{
 			RootCAs:      certPool,
 			Certificates: []tls.Certificate{cert},
@@ -232,6 +234,16 @@ func (opts Options) initManagerRunnables() (err error) {
 			log.Error(err, "failed to add API Server to manager")
 			return err
 		}
+
+		if err = cleaner.AddToManager(
+			opts.Manager,
+			opts.ClusterStore,
+			opts.ClusterExpireTime,
+			opts.RevokeGlobalService,
+		); err != nil {
+			log.Error(err, "failed to add cluster cleaner to manager")
+			return err
+		}
 	} else {
 		err = importer.AddToManager(importer.Config{
 			Interval:             opts.ServiceImportInterval,
@@ -262,6 +274,10 @@ func (opts Options) initManagerRunnables() (err error) {
 }
 
 func (opts Options) Run() error {
+	if opts.Mode == ModeServer {
+		go opts.recordGlobalServicesByCluster()
+	}
+
 	if err := opts.Manager.Start(signals.SetupSignalHandler()); err != nil {
 		log.Error(err, "failed to start controller manager")
 		return err
@@ -292,6 +308,39 @@ func (opts Options) runAPIServer(ctx context.Context) error {
 	}
 
 	return err
+}
+
+// recordGlobalServicesByCluster will record global services to ClusterStore by cluster
+func (opts Options) recordGlobalServicesByCluster() {
+	<-opts.Manager.Elected()
+
+	cli := opts.Manager.GetClient()
+	var globalServices apis.GlobalServiceList
+	if err := cli.List(context.Background(), &globalServices); err != nil {
+		log.Error(err, "failed to list all global services")
+		return
+	}
+
+	for _, gs := range globalServices.Items {
+		for _, endpoint := range gs.Spec.Endpoints {
+			// if an endpoint's cluster is the same as the cluster argument,
+			// it's not necessary to record this cluster's global service
+			// since this cluster's service-hub is running in server mode
+			if endpoint.Cluster == opts.Cluster {
+				continue
+			}
+
+			if opts.ClusterStore.Get(endpoint.Cluster) == nil {
+				cluster := opts.ClusterStore.New(endpoint.Cluster)
+				cluster.SetExpireTime(time.Now().Add(opts.ClusterExpireTime))
+
+				cluster.AddServiceKey(client.ObjectKey{
+					Name:      gs.Name,
+					Namespace: gs.Namespace,
+				})
+			}
+		}
+	}
 }
 
 func fileExists(filename string) bool {
