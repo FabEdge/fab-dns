@@ -46,6 +46,13 @@ func (c *Cluster) SetExpireTime(expireTime time.Time) {
 	c.expireTime = expireTime
 }
 
+func (c *Cluster) IsExpired() bool {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	return !c.expireTime.IsZero() && c.expireTime.Before(time.Now())
+}
+
 func (c *Cluster) GetAllServiceKeys() []client.ObjectKey {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -111,11 +118,9 @@ func (store *ClusterStore) GetExpiredClusters() []*Cluster {
 	store.lock.RLock()
 	defer store.lock.RUnlock()
 
-	now := time.Now()
 	var clusters []*Cluster
 	for _, c := range store.clusters {
-		expireTime := c.ExpireTime()
-		if !expireTime.IsZero() && expireTime.Before(now) {
+		if c.IsExpired() {
 			clusters = append(clusters, c)
 		}
 	}
