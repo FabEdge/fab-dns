@@ -5,6 +5,8 @@ import (
 
 	"github.com/spf13/pflag"
 	"k8s.io/klog/v2"
+
+	"github.com/FabEdge/fab-dns/pkg/about"
 )
 
 func Execute() error {
@@ -13,9 +15,12 @@ func Execute() error {
 	opts := Options{}
 	fs := pflag.CommandLine
 	opts.AddFlags(fs)
+	about.AddFlags(fs)
 	addLogFlags(fs)
 
 	pflag.Parse()
+
+	about.DisplayAndExitIfRequested()
 
 	if err := opts.Validate(); err != nil {
 		log.Error(err, "invalid arguments found")
