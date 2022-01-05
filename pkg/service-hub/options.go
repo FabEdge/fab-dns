@@ -145,8 +145,11 @@ func (opts *Options) initManager() (err error) {
 	opts.Manager, err = ctrlpkg.NewManager(kubeConfig, manager.Options{
 		Logger: log.WithName("service-hub"),
 	})
+	if err != nil {
+		log.Error(err, "failed to create controller manager")
+	}
 
-	return nil
+	return err
 }
 
 func (opts *Options) initAPIServer() (err error) {
