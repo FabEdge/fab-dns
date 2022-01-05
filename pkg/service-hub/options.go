@@ -16,6 +16,7 @@ import (
 	"k8s.io/klog/v2/klogr"
 	ctrlpkg "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
@@ -49,11 +50,12 @@ type Options struct {
 	Region  string
 	Mode    string
 
-	APIServerListenAddress string
-	APIServerAddress       string
-	TLSKeyFile             string
-	TLSCertFile            string
-	TLSCACertFile          string
+	HealthProbeListenAddress string
+	APIServerListenAddress   string
+	APIServerAddress         string
+	TLSKeyFile               string
+	TLSCertFile              string
+	TLSCACertFile            string
 
 	ClusterExpireTime     time.Duration
 	ServiceImportInterval time.Duration
@@ -74,6 +76,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringVar(&opts.Zone, "zone", "default", "The zone where the cluster is located, a zone name may contain the letters ‘a-z’ or ’A-Z’ or digits 0-9")
 	flag.StringVar(&opts.Region, "region", "default", "The region where the cluster is located, a region name may contain the letters ‘a-z’ or ’A-Z’ or digits 0-9")
 
+	flag.StringVar(&opts.HealthProbeListenAddress, "health-probe-listen-address", "0.0.0.0:3001", "The address on which health probe listen")
 	flag.StringVar(&opts.APIServerListenAddress, "api-server-listen-address", "0.0.0.0:3000", "The address on which API server listen")
 	flag.StringVar(&opts.APIServerAddress, "api-server-address", "", "The address with which client uses to visit API server")
 	flag.StringVar(&opts.TLSKeyFile, "tls-key-file", "", "The key file for API server/client")
@@ -143,8 +146,11 @@ func (opts *Options) initManager() (err error) {
 	}
 
 	opts.Manager, err = ctrlpkg.NewManager(kubeConfig, manager.Options{
-		Logger: log.WithName("service-hub"),
+		HealthProbeBindAddress: opts.HealthProbeListenAddress,
+		Logger:                 log.WithName("service-hub"),
 	})
+	_ = opts.Manager.AddReadyzCheck("ping", healthz.Ping)
+
 	if err != nil {
 		log.Error(err, "failed to create controller manager")
 	}
