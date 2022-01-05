@@ -1,4 +1,4 @@
-module github.com/FabEdge/fab-dns
+module github.com/fabedge/fab-dns
 
 go 1.16
 

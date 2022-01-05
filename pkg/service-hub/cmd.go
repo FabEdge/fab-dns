@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/pflag"
 	"k8s.io/klog/v2"
 
-	"github.com/FabEdge/fab-dns/pkg/about"
+	"github.com/fabedge/fab-dns/pkg/about"
 )
 
 func Execute() error {

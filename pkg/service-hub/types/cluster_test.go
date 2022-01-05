@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"github.com/FabEdge/fab-dns/pkg/service-hub/types"
+	"github.com/fabedge/fab-dns/pkg/service-hub/types"
 )
 
 var _ = Describe("ClusterStore", func() {

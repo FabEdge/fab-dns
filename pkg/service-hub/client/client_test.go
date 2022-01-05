@@ -12,9 +12,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
 
-	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
-	"github.com/FabEdge/fab-dns/pkg/service-hub/apiserver"
-	"github.com/FabEdge/fab-dns/pkg/service-hub/client"
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
+	"github.com/fabedge/fab-dns/pkg/service-hub/apiserver"
+	"github.com/fabedge/fab-dns/pkg/service-hub/client"
 )
 
 var _ = Describe("Client", func() {

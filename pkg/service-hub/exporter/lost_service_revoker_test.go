@@ -6,7 +6,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
 )
 
 var _ = Describe("LostServiceRevoker", func() {

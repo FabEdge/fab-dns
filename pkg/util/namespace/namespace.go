@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/FabEdge/fab-dns/pkg/constants"
+	"github.com/fabedge/fab-dns/pkg/constants"
 )
 
 func Ensure(ctx context.Context, cli client.Client, name string) error {

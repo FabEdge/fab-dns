@@ -8,7 +8,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	"github.com/FabEdge/fab-dns/pkg/service-hub/types"
+	"github.com/fabedge/fab-dns/pkg/service-hub/types"
 )
 
 // clusterCleaner will run periodically and clean endpoints of global services of expired cluster

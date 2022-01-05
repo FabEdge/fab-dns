@@ -10,8 +10,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/json"
 
-	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
-	"github.com/FabEdge/fab-dns/pkg/service-hub/apiserver"
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
+	"github.com/fabedge/fab-dns/pkg/service-hub/apiserver"
 )
 
 const defaultTimeout = 5 * time.Second

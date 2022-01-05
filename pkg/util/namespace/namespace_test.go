@@ -5,7 +5,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	nsutil "github.com/FabEdge/fab-dns/pkg/util/namespace"
+	nsutil "github.com/fabedge/fab-dns/pkg/util/namespace"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )

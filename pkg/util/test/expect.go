@@ -6,8 +6,8 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 
-	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
-	nsutil "github.com/FabEdge/fab-dns/pkg/util/namespace"
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
+	nsutil "github.com/fabedge/fab-dns/pkg/util/namespace"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 

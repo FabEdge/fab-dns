@@ -11,8 +11,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
-	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
-	testutil "github.com/FabEdge/fab-dns/pkg/util/test"
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
+	testutil "github.com/fabedge/fab-dns/pkg/util/test"
 )
 
 var kubeConfig *rest.Config
