@@ -1,7 +1,14 @@
 OUTPUT_DIR ?= _output
 
+VERSION := v0.1.0.alpha
+BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')
+GIT_COMMIT := $(shell git rev-parse --short HEAD)
+META := github.com/FabEdge/fab-dns/pkg/about
+FLAG_VERSION := ${META}.version=${VERSION}
+FLAG_BUILD_TIME := ${META}.buildTime=${BUILD_TIME}
+FLAG_GIT_COMMIT := ${META}.gitCommit=${GIT_COMMIT}
 GOLDFLAGS ?= -s -w
-LDFLAGS := -ldflags "${GOLDFLAGS}"
+LDFLAGS := -ldflags "${GOLDFLAGS} -X ${FLAG_VERSION} -X ${FLAG_BUILD_TIME} -X ${FLAG_GIT_COMMIT}"
 
 CRD_OPTIONS ?= "crd:trivialVersions=true"
 KUBEBUILDER_VERSION ?= 2.3.1
