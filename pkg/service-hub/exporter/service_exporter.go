@@ -13,8 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
-	"github.com/FabEdge/fab-dns/pkg/service-hub/types"
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
+	"github.com/fabedge/fab-dns/pkg/service-hub/types"
 )
 
 const (

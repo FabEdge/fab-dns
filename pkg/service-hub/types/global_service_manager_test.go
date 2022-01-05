@@ -9,9 +9,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
-	"github.com/FabEdge/fab-dns/pkg/service-hub/types"
-	testutil "github.com/FabEdge/fab-dns/pkg/util/test"
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
+	"github.com/fabedge/fab-dns/pkg/service-hub/types"
+	testutil "github.com/fabedge/fab-dns/pkg/util/test"
 )
 
 var _ = Describe("GlobalServiceManager", func() {

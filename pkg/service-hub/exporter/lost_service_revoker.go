@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
 )
 
 var _ reconcile.Reconciler = &lostServiceRevoker{}

@@ -13,8 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
-	testutil "github.com/FabEdge/fab-dns/pkg/util/test"
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
+	testutil "github.com/fabedge/fab-dns/pkg/util/test"
 )
 
 var _ = Describe("ServiceExporter", func() {

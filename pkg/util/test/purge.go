@@ -22,7 +22,7 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
 )
 
 func PurgeAllGlobalServices(cli client.Client, opts ...client.ListOption) {

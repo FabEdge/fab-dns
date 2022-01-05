@@ -19,13 +19,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
-	apis "github.com/FabEdge/fab-dns/pkg/apis/v1alpha1"
-	"github.com/FabEdge/fab-dns/pkg/service-hub/apiserver"
-	"github.com/FabEdge/fab-dns/pkg/service-hub/cleaner"
-	fclient "github.com/FabEdge/fab-dns/pkg/service-hub/client"
-	"github.com/FabEdge/fab-dns/pkg/service-hub/exporter"
-	"github.com/FabEdge/fab-dns/pkg/service-hub/importer"
-	"github.com/FabEdge/fab-dns/pkg/service-hub/types"
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
+	"github.com/fabedge/fab-dns/pkg/service-hub/apiserver"
+	"github.com/fabedge/fab-dns/pkg/service-hub/cleaner"
+	fclient "github.com/fabedge/fab-dns/pkg/service-hub/client"
+	"github.com/fabedge/fab-dns/pkg/service-hub/exporter"
+	"github.com/fabedge/fab-dns/pkg/service-hub/importer"
+	"github.com/fabedge/fab-dns/pkg/service-hub/types"
 )
 
 func init() {
