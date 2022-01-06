@@ -110,6 +110,17 @@ func testCorrectConfig() {
 			Expect(clusterRegion).To(Equal("north"))
 		})
 	})
+
+	When("fabdns ttl is specified", func() {
+		BeforeEach(func() {
+			config = `fabdns {
+				ttl 30
+			}`
+		})
+		It("should succeed with the specified cluster location infos", func() {
+			Expect(fabdns.TTL).To(Equal(uint32(30)))
+		})
+	})
 }
 
 func testIncorrectConfig() {
@@ -145,6 +156,17 @@ func testIncorrectConfig() {
 		})
 		It("should return arguments error", func() {
 			Expect(parseErr).To(HaveOccurred())
+		})
+	})
+
+	When("unexpected ttl is specified", func() {
+		BeforeEach(func() {
+			config = `fabdns {
+				ttl 5000
+			}`
+		})
+		It("should return ttl error", func() {
+			Expect(parseErr.Error()).To(ContainSubstring("must be in range"))
 		})
 	})
 }

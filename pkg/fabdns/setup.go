@@ -1,6 +1,8 @@
 package fabdns
 
 import (
+	"strconv"
+
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
@@ -48,7 +50,10 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 	c.Next() // Skip "fabdns" label
 
 	zones := plugin.OriginsFromArgsOrServerBlock(c.RemainingArgs(), c.ServerBlockKeys)
-	fabFall := fall.F{}
+	var (
+		fabFall fall.F
+		ttl     uint32
+	)
 	for c.NextBlock() {
 		switch c.Val() {
 		case "fallthrough":
@@ -83,6 +88,19 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 				return nil, c.ArgErr()
 			}
 			clusterRegion = args[0]
+		case "ttl":
+			args := c.RemainingArgs()
+			if len(args) != 1 {
+				return nil, c.ArgErr()
+			}
+			t, err := strconv.Atoi(args[0])
+			if err != nil {
+				return nil, c.Err(err.Error())
+			}
+			if t < 0 || t > 3600 {
+				return nil, c.Errf("ttl must be in range [0, 3600] configured %d", t)
+			}
+			ttl = uint32(t)
 		default:
 			return nil, c.Errf("unknown property '%s'", c.Val())
 		}
@@ -98,6 +116,9 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 		return nil, err
 	}
 	fabdns.Fall = fabFall
+	if ttl > 0 {
+		fabdns.TTL = ttl
+	}
 
 	return fabdns, nil
 }
