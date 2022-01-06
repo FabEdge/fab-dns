@@ -15,14 +15,6 @@ const PluginName = "fabdns"
 // Hook for unit tests
 var buildConfigFromFlags = clientcmd.BuildConfigFromFlags
 
-var (
-	masterurl     string
-	kubeconfig    string
-	cluster       string
-	clusterZone   string
-	clusterRegion string
-)
-
 func init() {
 	caddy.RegisterPlugin(PluginName, caddy.Plugin{
 		ServerType: "dns",
@@ -51,8 +43,13 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 
 	zones := plugin.OriginsFromArgsOrServerBlock(c.RemainingArgs(), c.ServerBlockKeys)
 	var (
-		fabFall fall.F
-		ttl     uint32
+		fabFall       fall.F
+		ttl           uint32
+		masterurl     string
+		kubeconfig    string
+		cluster       string
+		clusterZone   string
+		clusterRegion string
 	)
 	for c.NextBlock() {
 		switch c.Val() {

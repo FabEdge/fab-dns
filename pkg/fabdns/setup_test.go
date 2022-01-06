@@ -32,10 +32,6 @@ func testCorrectConfig() {
 		config string
 	)
 	JustBeforeEach(func() {
-		buildConfigFromFlags = func(masterUrl, kubeconfigPath string) (*rest.Config, error) {
-			return testCfg, nil
-		}
-
 		var err error
 		fabdns, err = fabdnsParse(caddy.NewTestController("dns", config))
 		Expect(err).To(Succeed())
@@ -84,15 +80,29 @@ func testCorrectConfig() {
 	})
 
 	When("fabdns kubeconfig and masterurl are specified", func() {
+		var (
+			oldBuildConfig func(masterUrl string, kubeconfigPath string) (*rest.Config, error)
+			kubeconfig     string
+			masterurl      string
+		)
 		BeforeEach(func() {
 			config = `fabdns {
 				kubeconfig /tmp/kubeconfigPath
-				masterurl http://1.1.1.1:6443
+				masterurl https://1.1.1.1:6443
 			}`
+			oldBuildConfig = buildConfigFromFlags
+			buildConfigFromFlags = func(masterUrl, kubeconfigPath string) (*rest.Config, error) {
+				masterurl = masterUrl
+				kubeconfig = kubeconfigPath
+				return testCfg, nil
+			}
+		})
+		AfterEach(func() {
+			buildConfigFromFlags = oldBuildConfig
 		})
 		It("should succeed with the specified kubeconfig and masterurl", func() {
 			Expect(kubeconfig).To(Equal("/tmp/kubeconfigPath"))
-			Expect(masterurl).To(Equal("http://1.1.1.1:6443"))
+			Expect(masterurl).To(Equal("https://1.1.1.1:6443"))
 		})
 	})
 
@@ -105,9 +115,9 @@ func testCorrectConfig() {
 			}`
 		})
 		It("should succeed with the specified cluster location infos", func() {
-			Expect(cluster).To(Equal("haidian"))
-			Expect(clusterZone).To(Equal("beijing"))
-			Expect(clusterRegion).To(Equal("north"))
+			Expect(fabdns.Cluster).To(Equal("haidian"))
+			Expect(fabdns.ClusterZone).To(Equal("beijing"))
+			Expect(fabdns.ClusterRegion).To(Equal("north"))
 		})
 	})
 
@@ -129,10 +139,6 @@ func testIncorrectConfig() {
 		config   string
 	)
 	JustBeforeEach(func() {
-		buildConfigFromFlags = func(masterUrl, kubeconfigPath string) (*rest.Config, error) {
-			return testCfg, nil
-		}
-
 		_, parseErr = fabdnsParse(caddy.NewTestController("dns", config))
 	})
 
@@ -173,10 +179,6 @@ func testIncorrectConfig() {
 
 func testPluginRegistration() {
 	It("register fabdns plugin with DNS server should succeed", func() {
-		buildConfigFromFlags = func(masterUrl, kubeconfigPath string) (*rest.Config, error) {
-			return testCfg, nil
-		}
-
 		controller := caddy.NewTestController("dns", PluginName)
 		err := setup(controller)
 		Expect(err).To(Succeed())

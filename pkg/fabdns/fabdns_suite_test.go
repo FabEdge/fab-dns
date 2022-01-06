@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -34,11 +35,16 @@ var _ = BeforeSuite(func(done Done) {
 
 	_ = apis.AddToScheme(scheme.Scheme)
 
+	buildConfigFromFlags = func(masterUrl, kubeconfigPath string) (*rest.Config, error) {
+		return testCfg, nil
+	}
+
 	close(done)
 }, 120)
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
+	buildConfigFromFlags = clientcmd.BuildConfigFromFlags
 	err := testEnv.Stop()
 	Expect(err).ShouldNot(HaveOccurred())
 })
