@@ -30,8 +30,13 @@ fmt:
 vet:
 	go vet ./...
 
-service-hub: fmt vet
+bin: $(if $(QUICK),, fmt vet) service-hub
+
+service-hub:
 	GOOS=${GOOS} go build ${LDFLAGS}  -o ${OUTPUT_DIR}/$@ ./cmd/$@
+
+service-hub-image:
+	docker build -t fabedge/service-hub:latest -f build/service-hub/Dockerfile .
 
 .PHONY: test
 test:
