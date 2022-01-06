@@ -4,14 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/pkg/fall"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
 )
 
 const (
@@ -66,7 +70,6 @@ func (f FabDNS) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) 
 	state := request.Request{W: w, Req: r}
 
 	qname := state.QName()
-
 	log.Debugf("Request query name is %s", qname)
 
 	zone := plugin.Zones(f.Zones).Matches(qname)
@@ -116,12 +119,103 @@ func (f FabDNS) IsNameError(err error) bool {
 	return err == errNoItems || err == errInvalidRequest
 }
 
-func (f FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]dns.RR, error) {
-	switch state.QType() {
-	case dns.TypeA:
-	case dns.TypeAAAA:
+func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]dns.RR, error) {
+
+	namespace, service, clustername, hostname := parsedReq.namespace, parsedReq.service, parsedReq.cluster, parsedReq.hostname
+
+	if len(namespace) == 0 || len(service) == 0 {
+		return nil, errNoItems
 	}
-	return nil, nil
+	if len(hostname) > 0 && clustername == "" {
+		return nil, errInvalidRequest
+	}
+
+	var (
+		globalService apis.GlobalService
+		serviceKey    = client.ObjectKey{
+			Namespace: namespace,
+			Name:      service,
+		}
+	)
+
+	err := f.Client.Get(context.TODO(), serviceKey, &globalService)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil, errNoItems
+		}
+		log.Errorf("query name %s get GlobalService err: %v", state.Name(), err)
+		return nil, err
+	}
+
+	var (
+		headless = clustername != ""
+
+		clusterMatchedRecords, inZoneRecords, inRegionRecords []dns.RR
+	)
+	if headless {
+		if globalService.Spec.Type != apis.Headless {
+			log.Debugf("get GlobalService type %s is not %s", globalService.Spec.Type, apis.Headless)
+			return nil, errInvalidRequest
+		}
+	} else {
+		// local cluster endpoints preference
+		clustername = f.Cluster
+	}
+	for _, endpoint := range globalService.Spec.Endpoints {
+		switch {
+		case endpoint.Cluster == clustername:
+			if headless {
+				if hostname == *endpoint.Hostname {
+					if results, exist := f.generateRecords(state, endpoint); exist {
+						clusterMatchedRecords = append(clusterMatchedRecords, results...)
+					}
+				}
+				continue
+			}
+			if results, exist := f.generateRecords(state, endpoint); exist {
+				clusterMatchedRecords = append(clusterMatchedRecords, results...)
+			}
+
+		case endpoint.Zone == f.ClusterZone:
+			// in zone
+			if results, exist := f.generateRecords(state, endpoint); exist {
+				inZoneRecords = append(inZoneRecords, results...)
+			}
+
+		case endpoint.Region == f.ClusterRegion:
+			// in region
+			if results, exist := f.generateRecords(state, endpoint); exist {
+				inRegionRecords = append(inRegionRecords, results...)
+			}
+		}
+	}
+
+	if headless {
+		if len(clusterMatchedRecords) == 0 {
+			return nil, errNoItems
+		}
+		return clusterMatchedRecords, nil
+	}
+
+	switch {
+	case len(clusterMatchedRecords) > 0:
+		return clusterMatchedRecords, nil
+	case len(inZoneRecords) > 0:
+		return inZoneRecords, nil
+	case len(inRegionRecords) > 0:
+		return inRegionRecords, nil
+	default:
+		allRecords := make([]dns.RR, 0)
+		for _, endpoint := range globalService.Spec.Endpoints {
+			if results, exist := f.generateRecords(state, endpoint); exist {
+				allRecords = append(allRecords, results...)
+			}
+		}
+		if len(allRecords) == 0 {
+			return nil, errNoItems
+		}
+		return allRecords, nil
+	}
 }
 
 func (f FabDNS) writeMsg(state *request.Request, records []dns.RR, rcode int, err error) (int, error) {
@@ -147,4 +241,43 @@ func (f FabDNS) nextOrFailure(state *request.Request, ctx context.Context, w dns
 	}
 
 	return f.writeMsg(state, nil, rcode, err)
+}
+
+func (f FabDNS) generateRecords(state *request.Request, endpoint apis.Endpoint) (records []dns.RR, exist bool) {
+	switch state.QType() {
+	case dns.TypeA:
+		for _, addr := range endpoint.Addresses {
+			if ip, ok := verifyIP(addr); ok {
+				if isIPv4(ip) {
+					records = append(records, &dns.A{
+						Hdr: dns.RR_Header{Name: state.QName(), Rrtype: dns.TypeA, Class: state.QClass(), Ttl: f.TTL},
+						A:   ip.To4(),
+					})
+					exist = true
+				}
+			}
+		}
+	case dns.TypeAAAA:
+		for _, addr := range endpoint.Addresses {
+			if ip, ok := verifyIP(addr); ok {
+				if !isIPv4(ip) {
+					records = append(records, &dns.AAAA{
+						Hdr:  dns.RR_Header{Name: state.QName(), Rrtype: dns.TypeAAAA, Class: state.QClass(), Ttl: f.TTL},
+						AAAA: ip.To16(),
+					})
+					exist = true
+				}
+			}
+		}
+	}
+	return
+}
+
+func verifyIP(address string) (net.IP, bool) {
+	ip := net.ParseIP(address)
+	return ip, ip != nil
+}
+
+func isIPv4(ip net.IP) bool {
+	return ip.To4() != nil
 }

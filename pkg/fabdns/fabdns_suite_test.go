@@ -4,14 +4,15 @@ import (
 	"path/filepath"
 	"testing"
 
-	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
-	testutil "github.com/fabedge/fab-dns/pkg/util/test"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
+	testutil "github.com/fabedge/fab-dns/pkg/util/test"
 )
 
 var testCfg *rest.Config
