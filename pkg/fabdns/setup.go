@@ -8,6 +8,7 @@ import (
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/pkg/fall"
 	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const PluginName = "fabdns"
@@ -44,7 +45,7 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 	zones := plugin.OriginsFromArgsOrServerBlock(c.RemainingArgs(), c.ServerBlockKeys)
 	var (
 		fabFall       fall.F
-		ttl           uint32
+		ttl           int
 		masterurl     string
 		kubeconfig    string
 		cluster       string
@@ -90,17 +91,20 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 			if len(args) != 1 {
 				return nil, c.ArgErr()
 			}
-			t, err := strconv.Atoi(args[0])
+			var err error
+			ttl, err = strconv.Atoi(args[0])
 			if err != nil {
-				return nil, c.Err(err.Error())
+				return nil, c.Errf("ttl %v", err)
 			}
-			if t < 0 || t > 3600 {
-				return nil, c.Errf("ttl must be in range [0, 3600] configured %d", t)
+			if ttl <= 0 || ttl > 3600 {
+				return nil, c.Errf("ttl %d is out of range (0, 3600], default ttl is %d if not configured", ttl, defaultTTL)
 			}
-			ttl = uint32(t)
 		default:
 			return nil, c.Errf("unknown property '%s'", c.Val())
 		}
+	}
+	if ttl == 0 {
+		ttl = defaultTTL
 	}
 
 	cfg, err := buildConfigFromFlags(masterurl, kubeconfig)
@@ -108,13 +112,19 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 		return nil, err
 	}
 
-	fabdns, err := New(cfg, zones, cluster, clusterZone, clusterRegion)
+	cli, err := client.New(cfg, client.Options{})
 	if err != nil {
 		return nil, err
 	}
-	fabdns.Fall = fabFall
-	if ttl > 0 {
-		fabdns.TTL = ttl
+
+	fabdns := &FabDNS{
+		Zones:         zones,
+		Fall:          fabFall,
+		TTL:           uint32(ttl),
+		Client:        cli,
+		Cluster:       cluster,
+		ClusterZone:   clusterZone,
+		ClusterRegion: clusterRegion,
 	}
 
 	return fabdns, nil

@@ -12,7 +12,6 @@ import (
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
@@ -23,7 +22,7 @@ const (
 	Svc = "svc"
 	// Pod is the DNS schema for kubernetes pods
 	Pod        = "pod"
-	defaultTTL = uint32(5)
+	defaultTTL = 5
 )
 
 var (
@@ -45,24 +44,6 @@ type FabDNS struct {
 	Cluster       string
 	ClusterZone   string
 	ClusterRegion string
-}
-
-func New(cfg *rest.Config, zones []string, cluster, clusterZone, clusterRegion string) (*FabDNS, error) {
-	cli, err := client.New(cfg, client.Options{})
-	if err != nil {
-		return nil, err
-	}
-
-	fabdns := FabDNS{
-		Zones:         zones,
-		TTL:           defaultTTL,
-		Client:        cli,
-		Cluster:       cluster,
-		ClusterZone:   clusterZone,
-		ClusterRegion: clusterRegion,
-	}
-
-	return &fabdns, nil
 }
 
 // ServeDNS implements the plugin.Handler interface.

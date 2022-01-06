@@ -172,7 +172,7 @@ func testIncorrectConfig() {
 			}`
 		})
 		It("should return ttl error", func() {
-			Expect(parseErr.Error()).To(ContainSubstring("must be in range"))
+			Expect(parseErr.Error()).To(ContainSubstring("out of range"))
 		})
 	})
 }
