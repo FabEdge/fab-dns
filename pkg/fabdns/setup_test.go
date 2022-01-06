@@ -9,6 +9,7 @@ import (
 	"github.com/miekg/dns"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"k8s.io/client-go/rest"
 )
 
 type fakeHandler struct{}
@@ -31,6 +32,10 @@ func testCorrectConfig() {
 		config string
 	)
 	JustBeforeEach(func() {
+		buildConfigFromFlags = func(masterUrl, kubeconfigPath string) (*rest.Config, error) {
+			return testCfg, nil
+		}
+
 		var err error
 		fabdns, err = fabdnsParse(caddy.NewTestController("dns", config))
 		Expect(err).To(Succeed())
@@ -78,6 +83,19 @@ func testCorrectConfig() {
 		})
 	})
 
+	When("fabdns kubeconfig and masterurl are specified", func() {
+		BeforeEach(func() {
+			config = `fabdns {
+				kubeconfig /tmp/kubeconfigPath
+				masterurl http://1.1.1.1:6443
+			}`
+		})
+		It("should succeed with the specified kubeconfig and masterurl", func() {
+			Expect(kubeconfig).To(Equal("/tmp/kubeconfigPath"))
+			Expect(masterurl).To(Equal("http://1.1.1.1:6443"))
+		})
+	})
+
 }
 
 func testIncorrectConfig() {
@@ -86,6 +104,10 @@ func testIncorrectConfig() {
 		config   string
 	)
 	JustBeforeEach(func() {
+		buildConfigFromFlags = func(masterUrl, kubeconfigPath string) (*rest.Config, error) {
+			return testCfg, nil
+		}
+
 		_, parseErr = fabdnsParse(caddy.NewTestController("dns", config))
 	})
 
@@ -100,10 +122,25 @@ func testIncorrectConfig() {
 			Expect(parseErr.Error()).To(ContainSubstring("notexist"))
 		})
 	})
+
+	When("fabdns kubeconfig specified unexpected args", func() {
+		BeforeEach(func() {
+			config = `fabdns {
+				kubeconfig /tmp/kubeconfigPath unexpectedArg
+			}`
+		})
+		It("should return arguments error", func() {
+			Expect(parseErr).To(HaveOccurred())
+		})
+	})
 }
 
 func testPluginRegistration() {
 	It("register fabdns plugin with DNS server should succeed", func() {
+		buildConfigFromFlags = func(masterUrl, kubeconfigPath string) (*rest.Config, error) {
+			return testCfg, nil
+		}
+
 		controller := caddy.NewTestController("dns", PluginName)
 		err := setup(controller)
 		Expect(err).To(Succeed())

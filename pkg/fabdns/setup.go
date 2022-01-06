@@ -6,11 +6,18 @@ import (
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/pkg/fall"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const PluginName = "fabdns"
 
+// Hook for unit tests
+var buildConfigFromFlags = clientcmd.BuildConfigFromFlags
+
 var (
+	masterurl     string
+	kubeconfig    string
 	cluster       string
 	clusterZone   string
 	clusterRegion string
@@ -49,20 +56,38 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 	c.Next() // Skip "fabdns" label
 
 	zones := plugin.OriginsFromArgsOrServerBlock(c.RemainingArgs(), c.ServerBlockKeys)
-
-	fabdns, err := New(zones, cluster, clusterZone, clusterRegion)
-	if err != nil {
-		return nil, err
-	}
-
+	fabFall := fall.F{}
 	for c.NextBlock() {
 		switch c.Val() {
 		case "fallthrough":
-			fabdns.Fall.SetZonesFromArgs(c.RemainingArgs())
+			fabFall.SetZonesFromArgs(c.RemainingArgs())
+		case "kubeconfig":
+			args := c.RemainingArgs()
+			if len(args) != 1 {
+				return nil, c.ArgErr()
+			}
+			kubeconfig = args[0]
+		case "masterurl":
+			args := c.RemainingArgs()
+			if len(args) != 1 {
+				return nil, c.ArgErr()
+			}
+			masterurl = args[0]
 		default:
 			return nil, c.Errf("unknown property '%s'", c.Val())
 		}
 	}
+
+	cfg, err := buildConfigFromFlags(masterurl, kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	fabdns, err := New(cfg, zones, cluster, clusterZone, clusterRegion)
+	if err != nil {
+		return nil, err
+	}
+	fabdns.Fall = fabFall
 
 	return fabdns, nil
 }

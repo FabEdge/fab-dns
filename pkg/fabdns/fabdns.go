@@ -10,6 +10,8 @@ import (
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
+	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -35,16 +37,22 @@ type FabDNS struct {
 	Zones         []string
 	Fall          fall.F
 	TTL           uint32
+	Client        client.Client
 	Cluster       string
 	ClusterZone   string
 	ClusterRegion string
 }
 
-func New(zones []string, cluster, clusterZone, clusterRegion string) (*FabDNS, error) {
+func New(cfg *rest.Config, zones []string, cluster, clusterZone, clusterRegion string) (*FabDNS, error) {
+	cli, err := client.New(cfg, client.Options{})
+	if err != nil {
+		return nil, err
+	}
 
 	fabdns := FabDNS{
 		Zones:         zones,
 		TTL:           defaultTTL,
+		Client:        cli,
 		Cluster:       cluster,
 		ClusterZone:   clusterZone,
 		ClusterRegion: clusterRegion,
