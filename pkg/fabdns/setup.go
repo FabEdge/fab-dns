@@ -1,8 +1,6 @@
 package fabdns
 
 import (
-	"flag"
-
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
@@ -28,12 +26,6 @@ func init() {
 		ServerType: "dns",
 		Action:     setup,
 	})
-}
-
-func init() {
-	flag.StringVar(&cluster, "cluster", "", "Cluster name. Required for recognizing cluster.")
-	flag.StringVar(&clusterZone, "cluster-zone", "", "Cluster zone. Required for recognizing zone.")
-	flag.StringVar(&clusterRegion, "cluster-region", "", "Cluster region. Required for recognizing region.")
 }
 
 func setup(c *caddy.Controller) error {
@@ -73,6 +65,24 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 				return nil, c.ArgErr()
 			}
 			masterurl = args[0]
+		case "cluster":
+			args := c.RemainingArgs()
+			if len(args) != 1 {
+				return nil, c.ArgErr()
+			}
+			cluster = args[0]
+		case "cluster-zone":
+			args := c.RemainingArgs()
+			if len(args) != 1 {
+				return nil, c.ArgErr()
+			}
+			clusterZone = args[0]
+		case "cluster-region":
+			args := c.RemainingArgs()
+			if len(args) != 1 {
+				return nil, c.ArgErr()
+			}
+			clusterRegion = args[0]
 		default:
 			return nil, c.Errf("unknown property '%s'", c.Val())
 		}

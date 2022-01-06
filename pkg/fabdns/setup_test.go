@@ -96,6 +96,20 @@ func testCorrectConfig() {
 		})
 	})
 
+	When("fabdns cluster location infos are specified", func() {
+		BeforeEach(func() {
+			config = `fabdns {
+				cluster haidian
+				cluster-zone beijing
+				cluster-region north
+			}`
+		})
+		It("should succeed with the specified cluster location infos", func() {
+			Expect(cluster).To(Equal("haidian"))
+			Expect(clusterZone).To(Equal("beijing"))
+			Expect(clusterRegion).To(Equal("north"))
+		})
+	})
 }
 
 func testIncorrectConfig() {
