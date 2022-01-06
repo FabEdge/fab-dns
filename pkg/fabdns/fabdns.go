@@ -101,7 +101,6 @@ func (f FabDNS) IsNameError(err error) bool {
 }
 
 func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]dns.RR, error) {
-
 	namespace, service, clustername, hostname := parsedReq.namespace, parsedReq.service, parsedReq.cluster, parsedReq.hostname
 
 	if len(namespace) == 0 || len(service) == 0 {
@@ -124,18 +123,19 @@ func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]
 		if k8serrors.IsNotFound(err) {
 			return nil, errNoItems
 		}
-		log.Errorf("query name %s get GlobalService err: %v", state.Name(), err)
+		log.Errorf("failed to find GlobalService err: %v, query name is %s", err, state.Name())
 		return nil, err
 	}
 
 	var (
-		headless = clustername != ""
-
-		clusterMatchedRecords, inZoneRecords, inRegionRecords []dns.RR
+		headless              = clustername != ""
+		clusterMatchedRecords []dns.RR
+		inZoneRecords         []dns.RR
+		inRegionRecords       []dns.RR
 	)
 	if headless {
 		if globalService.Spec.Type != apis.Headless {
-			log.Debugf("get GlobalService type %s is not %s", globalService.Spec.Type, apis.Headless)
+			log.Debugf("the type of GlobalService is %s not match with %s", globalService.Spec.Type, apis.Headless)
 			return nil, errInvalidRequest
 		}
 	} else {
@@ -146,28 +146,20 @@ func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]
 		switch {
 		case endpoint.Cluster == clustername:
 			if headless {
-				if hostname == *endpoint.Hostname {
-					if results, exist := f.generateRecords(state, endpoint); exist {
-						clusterMatchedRecords = append(clusterMatchedRecords, results...)
-					}
+				if endpoint.Hostname != nil && *endpoint.Hostname == hostname {
+					clusterMatchedRecords = append(clusterMatchedRecords, f.generateRecords(state, endpoint)...)
 				}
 				continue
 			}
-			if results, exist := f.generateRecords(state, endpoint); exist {
-				clusterMatchedRecords = append(clusterMatchedRecords, results...)
-			}
+			clusterMatchedRecords = append(clusterMatchedRecords, f.generateRecords(state, endpoint)...)
 
 		case endpoint.Zone == f.ClusterZone:
 			// in zone
-			if results, exist := f.generateRecords(state, endpoint); exist {
-				inZoneRecords = append(inZoneRecords, results...)
-			}
+			inZoneRecords = append(inZoneRecords, f.generateRecords(state, endpoint)...)
 
 		case endpoint.Region == f.ClusterRegion:
 			// in region
-			if results, exist := f.generateRecords(state, endpoint); exist {
-				inRegionRecords = append(inRegionRecords, results...)
-			}
+			inRegionRecords = append(inRegionRecords, f.generateRecords(state, endpoint)...)
 		}
 	}
 
@@ -188,9 +180,7 @@ func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]
 	default:
 		allRecords := make([]dns.RR, 0)
 		for _, endpoint := range globalService.Spec.Endpoints {
-			if results, exist := f.generateRecords(state, endpoint); exist {
-				allRecords = append(allRecords, results...)
-			}
+			allRecords = append(allRecords, f.generateRecords(state, endpoint)...)
 		}
 		if len(allRecords) == 0 {
 			return nil, errNoItems
@@ -224,7 +214,7 @@ func (f FabDNS) nextOrFailure(state *request.Request, ctx context.Context, w dns
 	return f.writeMsg(state, nil, rcode, err)
 }
 
-func (f FabDNS) generateRecords(state *request.Request, endpoint apis.Endpoint) (records []dns.RR, exist bool) {
+func (f FabDNS) generateRecords(state *request.Request, endpoint apis.Endpoint) (records []dns.RR) {
 	switch state.QType() {
 	case dns.TypeA:
 		for _, addr := range endpoint.Addresses {
@@ -234,7 +224,6 @@ func (f FabDNS) generateRecords(state *request.Request, endpoint apis.Endpoint) 
 						Hdr: dns.RR_Header{Name: state.QName(), Rrtype: dns.TypeA, Class: state.QClass(), Ttl: f.TTL},
 						A:   ip.To4(),
 					})
-					exist = true
 				}
 			}
 		}
@@ -246,7 +235,6 @@ func (f FabDNS) generateRecords(state *request.Request, endpoint apis.Endpoint) 
 						Hdr:  dns.RR_Header{Name: state.QName(), Rrtype: dns.TypeAAAA, Class: state.QClass(), Ttl: f.TTL},
 						AAAA: ip.To16(),
 					})
-					exist = true
 				}
 			}
 		}
