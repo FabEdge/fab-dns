@@ -7,8 +7,11 @@ import (
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/pkg/fall"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
 )
 
 const PluginName = "fabdns"
@@ -21,6 +24,7 @@ func init() {
 		ServerType: "dns",
 		Action:     setup,
 	})
+	_ = apis.AddToScheme(scheme.Scheme)
 }
 
 func setup(c *caddy.Controller) error {
