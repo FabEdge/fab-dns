@@ -9,6 +9,7 @@ import (
 	"github.com/miekg/dns"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"k8s.io/client-go/rest"
 )
 
 type fakeHandler struct{}
@@ -78,6 +79,58 @@ func testCorrectConfig() {
 		})
 	})
 
+	When("fabdns kubeconfig and masterurl are specified", func() {
+		var (
+			oldBuildConfig func(masterUrl string, kubeconfigPath string) (*rest.Config, error)
+			kubeconfig     string
+			masterurl      string
+		)
+		BeforeEach(func() {
+			config = `fabdns {
+				kubeconfig /tmp/kubeconfigPath
+				masterurl https://1.1.1.1:6443
+			}`
+			oldBuildConfig = buildConfigFromFlags
+			buildConfigFromFlags = func(masterUrl, kubeconfigPath string) (*rest.Config, error) {
+				masterurl = masterUrl
+				kubeconfig = kubeconfigPath
+				return testCfg, nil
+			}
+		})
+		AfterEach(func() {
+			buildConfigFromFlags = oldBuildConfig
+		})
+		It("should succeed with the specified kubeconfig and masterurl", func() {
+			Expect(kubeconfig).To(Equal("/tmp/kubeconfigPath"))
+			Expect(masterurl).To(Equal("https://1.1.1.1:6443"))
+		})
+	})
+
+	When("fabdns cluster location infos are specified", func() {
+		BeforeEach(func() {
+			config = `fabdns {
+				cluster haidian
+				cluster-zone beijing
+				cluster-region north
+			}`
+		})
+		It("should succeed with the specified cluster location infos", func() {
+			Expect(fabdns.Cluster).To(Equal("haidian"))
+			Expect(fabdns.ClusterZone).To(Equal("beijing"))
+			Expect(fabdns.ClusterRegion).To(Equal("north"))
+		})
+	})
+
+	When("fabdns ttl is specified", func() {
+		BeforeEach(func() {
+			config = `fabdns {
+				ttl 30
+			}`
+		})
+		It("should succeed with the specified cluster location infos", func() {
+			Expect(fabdns.TTL).To(Equal(uint32(30)))
+		})
+	})
 }
 
 func testIncorrectConfig() {
@@ -98,6 +151,28 @@ func testIncorrectConfig() {
 
 		It("should return an appropriate plugin error", func() {
 			Expect(parseErr.Error()).To(ContainSubstring("notexist"))
+		})
+	})
+
+	When("fabdns kubeconfig specified unexpected args", func() {
+		BeforeEach(func() {
+			config = `fabdns {
+				kubeconfig /tmp/kubeconfigPath unexpectedArg
+			}`
+		})
+		It("should return arguments error", func() {
+			Expect(parseErr).To(HaveOccurred())
+		})
+	})
+
+	When("unexpected ttl is specified", func() {
+		BeforeEach(func() {
+			config = `fabdns {
+				ttl 5000
+			}`
+		})
+		It("should return ttl error", func() {
+			Expect(parseErr.Error()).To(ContainSubstring("out of range"))
 		})
 	})
 }
