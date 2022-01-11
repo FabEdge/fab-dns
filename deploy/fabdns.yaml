@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: fabedge
+  name: fabdns
+  labels:
+    app: fabdns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fabdns
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: fabdns
+    spec:
+      containers:
+      - name: fabdns
+        image: fabedge/fabdns
+        imagePullPolicy: IfNotPresent
+        args:
+        - -conf
+        - /etc/fabdns/Corefile
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ready
+            port: 8181
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        ports:
+        - containerPort: 53
+          name: dns-udp
+          protocol: UDP
+        - containerPort: 53
+          name: dns-tcp
+          protocol: TCP
+        resources:
+          limits:
+            memory: 170Mi
+          requests:
+            cpu: 100m
+            memory: 70Mi
+        volumeMounts:
+        - mountPath: /etc/fabdns
+          name: config-volume
+          readOnly: true
+      dnsPolicy: Default
+      restartPolicy: Always
+      serviceAccountName: fabedge-operator
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  # 根据选择的边缘系统来配置，避免把fabdns部署到边缘节点
+                  - key: node-role.kubernetes.io/edge
+                    operator: DoesNotExist
+      volumes:
+      - configMap:
+          defaultMode: 420
+          items:
+          - key: Corefile
+            path: Corefile
+          name: fabdns
+        name: config-volume
