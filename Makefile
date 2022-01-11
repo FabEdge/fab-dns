@@ -38,6 +38,12 @@ service-hub:
 service-hub-image:
 	docker build -t fabedge/service-hub:latest -f build/service-hub/Dockerfile .
 
+fabdns:
+	GOOS=${GOOS} go build -o ${OUTPUT_DIR}/$@ ./cmd/$@
+
+fabdns-image:
+	docker build -t fabedge/fabdns:latest -f build/fabdns/Dockerfile .
+
 .PHONY: test
 test:
 ifneq (,$(shell which ginkgo))
