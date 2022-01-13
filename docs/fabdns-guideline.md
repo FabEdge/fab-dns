@@ -38,10 +38,8 @@ data:
            cluster-region north
            ttl 30
         }
-        forward . /etc/resolv.conf {
-           max_concurrent 1000
-        }
         cache 30
+        reload
     }
 ```
 
