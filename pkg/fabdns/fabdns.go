@@ -129,6 +129,7 @@ func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]
 
 	var (
 		headless              = clustername != ""
+		existHeadlessQName    bool
 		clusterMatchedRecords []dns.RR
 		inZoneRecords         []dns.RR
 		inRegionRecords       []dns.RR
@@ -147,6 +148,7 @@ func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]
 		case endpoint.Cluster == clustername:
 			if headless {
 				if endpoint.Hostname != nil && *endpoint.Hostname == hostname {
+					existHeadlessQName = true
 					clusterMatchedRecords = append(clusterMatchedRecords, f.generateRecords(state, endpoint)...)
 				}
 				continue
@@ -164,7 +166,7 @@ func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]
 	}
 
 	if headless {
-		if len(clusterMatchedRecords) == 0 {
+		if !existHeadlessQName {
 			return nil, errNoItems
 		}
 		return clusterMatchedRecords, nil
@@ -181,9 +183,6 @@ func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]
 		allRecords := make([]dns.RR, 0)
 		for _, endpoint := range globalService.Spec.Endpoints {
 			allRecords = append(allRecords, f.generateRecords(state, endpoint)...)
-		}
-		if len(allRecords) == 0 {
-			return nil, errNoItems
 		}
 		return allRecords, nil
 	}

@@ -520,6 +520,7 @@ func testHeadlessServices() {
 		hostname1       = "test01"
 		hostname2       = "test02"
 		hostname3       = "test03"
+		hostname4       = "test04"
 		testservice     apis.GlobalService
 
 		testRecorder *dnstest.Recorder
@@ -579,6 +580,18 @@ func testHeadlessServices() {
 							Namespace: namespaceDefault,
 						},
 					},
+					{
+						Hostname:  &hostname4,
+						Cluster:   clusterChaoyang,
+						Region:    "north",
+						Zone:      "beijing",
+						Addresses: []string{"FF01::4"},
+						TargetRef: &corev1.ObjectReference{
+							Kind:      "Service",
+							Name:      svcNginxNorth,
+							Namespace: namespaceDefault,
+						},
+					},
 				},
 			},
 		}
@@ -622,6 +635,32 @@ func testHeadlessServices() {
 				Answer: []dns.RR{
 					test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::3")),
 				},
+			}
+			executeTestCase(fabdns, testRecorder, testCase)
+		})
+	})
+
+	When("global service type of Headless exists and no A record", func() {
+		It("should succeed with A record response", func() {
+			qname := fmt.Sprintf("%s.%s.%s.%s.svc.%s", hostname4, clusterChaoyang, svcNginxNorth, namespaceDefault, testZone)
+			testCase := test.Case{
+				Qname:  qname,
+				Qtype:  dns.TypeA,
+				Rcode:  dns.RcodeSuccess,
+				Answer: []dns.RR{},
+			}
+			executeTestCase(fabdns, testRecorder, testCase)
+		})
+	})
+
+	When("global service type of Headless exists and no AAAA record", func() {
+		It("should succeed with AAAA record response", func() {
+			qname := fmt.Sprintf("%s.%s.%s.%s.svc.%s", hostname2, clusterMinhang, svcNginxNorth, namespaceDefault, testZone)
+			testCase := test.Case{
+				Qname:  qname,
+				Qtype:  dns.TypeAAAA,
+				Rcode:  dns.RcodeSuccess,
+				Answer: []dns.RR{},
 			}
 			executeTestCase(fabdns, testRecorder, testCase)
 		})
