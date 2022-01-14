@@ -47,12 +47,14 @@ func testRequestImplements() {
 
 	BeforeEach(func() {
 		fabdns = &FabDNS{
-			Zones:         []string{testZone},
-			TTL:           5,
-			Client:        testK8sClient,
-			Cluster:       testLocalCluster,
-			ClusterZone:   testClusterZone,
-			ClusterRegion: testClusterRegion,
+			Zones:  []string{testZone},
+			TTL:    5,
+			Client: testK8sClient,
+			Cluster: ClusterInfo{
+				Name:   testLocalCluster,
+				Zone:   testClusterZone,
+				Region: testClusterRegion,
+			},
 		}
 		testRecorder = dnstest.NewRecorder(&test.ResponseWriter{})
 
@@ -187,13 +189,15 @@ func testFallthroughConfigured() {
 
 	BeforeEach(func() {
 		fabdns = &FabDNS{
-			Next:          test.NextHandler(dns.RcodeBadCookie, errors.New("fake plugin error")),
-			Zones:         []string{testZone},
-			Fall:          fall.F{Zones: []string{testFallthroughZone}},
-			Cluster:       "fabedge",
-			ClusterZone:   "beijing",
-			ClusterRegion: "north",
-			TTL:           5,
+			Next:  test.NextHandler(dns.RcodeBadCookie, errors.New("fake plugin error")),
+			Zones: []string{testZone},
+			Fall:  fall.F{Zones: []string{testFallthroughZone}},
+			Cluster: ClusterInfo{
+				Name:   "fabedge",
+				Zone:   "beijing",
+				Region: "north",
+			},
+			TTL: 5,
 		}
 		testRecorder = dnstest.NewRecorder(&test.ResponseWriter{})
 	})
@@ -303,12 +307,14 @@ func testClusterIPServices() {
 		createGlobalService(testK8sClient, &testservice)
 
 		fabdns = &FabDNS{
-			Zones:         []string{testZone},
-			TTL:           5,
-			Client:        testK8sClient,
-			Cluster:       testLocalCluster,
-			ClusterZone:   testClusterZone,
-			ClusterRegion: testClusterRegion,
+			Zones:  []string{testZone},
+			TTL:    5,
+			Client: testK8sClient,
+			Cluster: ClusterInfo{
+				Name:   testLocalCluster,
+				Zone:   testClusterZone,
+				Region: testClusterRegion,
+			},
 		}
 		testRecorder = dnstest.NewRecorder(&test.ResponseWriter{})
 	})
@@ -320,9 +326,9 @@ func testClusterIPServices() {
 	When("global service type of ClusterIP exists", func() {
 
 		It("should succeed with same cluster A record response", func() {
-			fabdns.Cluster = "chaoyang"
-			fabdns.ClusterZone = "beijing"
-			fabdns.ClusterRegion = "north"
+			fabdns.Cluster.Name = "chaoyang"
+			fabdns.Cluster.Zone = "beijing"
+			fabdns.Cluster.Region = "north"
 
 			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
 			testCase := test.Case{
@@ -337,9 +343,9 @@ func testClusterIPServices() {
 		})
 
 		It("should succeed with same cluster zone A record response", func() {
-			fabdns.Cluster = "haidian"
-			fabdns.ClusterZone = "beijing"
-			fabdns.ClusterRegion = "north"
+			fabdns.Cluster.Name = "haidian"
+			fabdns.Cluster.Zone = "beijing"
+			fabdns.Cluster.Region = "north"
 
 			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
 			testCase := test.Case{
@@ -355,9 +361,9 @@ func testClusterIPServices() {
 		})
 
 		It("should succeed with same cluster region A record response", func() {
-			fabdns.Cluster = "tianjin"
-			fabdns.ClusterZone = "tianjin"
-			fabdns.ClusterRegion = "north"
+			fabdns.Cluster.Name = "tianjin"
+			fabdns.Cluster.Zone = "tianjin"
+			fabdns.Cluster.Region = "north"
 
 			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
 			testCase := test.Case{
@@ -374,9 +380,9 @@ func testClusterIPServices() {
 		})
 
 		It("should succeed with all A record response", func() {
-			fabdns.Cluster = "xian"
-			fabdns.ClusterZone = "shanxi"
-			fabdns.ClusterRegion = "west"
+			fabdns.Cluster.Name = "xian"
+			fabdns.Cluster.Zone = "shanxi"
+			fabdns.Cluster.Region = "west"
 
 			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
 			testCase := test.Case{
@@ -394,9 +400,9 @@ func testClusterIPServices() {
 		})
 
 		It("should succeed with same cluster AAAA record response", func() {
-			fabdns.Cluster = "chaoyang"
-			fabdns.ClusterZone = "beijing"
-			fabdns.ClusterRegion = "north"
+			fabdns.Cluster.Name = "chaoyang"
+			fabdns.Cluster.Zone = "beijing"
+			fabdns.Cluster.Region = "north"
 
 			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
 			testCase := test.Case{
@@ -411,9 +417,9 @@ func testClusterIPServices() {
 		})
 
 		It("should succeed with same zone AAAA record response", func() {
-			fabdns.Cluster = "xicheng"
-			fabdns.ClusterZone = "beijing"
-			fabdns.ClusterRegion = "north"
+			fabdns.Cluster.Name = "xicheng"
+			fabdns.Cluster.Zone = "beijing"
+			fabdns.Cluster.Region = "north"
 
 			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
 			testCase := test.Case{
@@ -428,9 +434,9 @@ func testClusterIPServices() {
 		})
 
 		It("should succeed with same region AAAA record response", func() {
-			fabdns.Cluster = "tianjin"
-			fabdns.ClusterZone = "tianjin"
-			fabdns.ClusterRegion = "north"
+			fabdns.Cluster.Name = "tianjin"
+			fabdns.Cluster.Zone = "tianjin"
+			fabdns.Cluster.Region = "north"
 
 			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
 			testCase := test.Case{
@@ -446,9 +452,9 @@ func testClusterIPServices() {
 		})
 
 		It("should succeed with all AAAA record response", func() {
-			fabdns.Cluster = "xian"
-			fabdns.ClusterZone = "shanxi"
-			fabdns.ClusterRegion = "west"
+			fabdns.Cluster.Name = "xian"
+			fabdns.Cluster.Zone = "shanxi"
+			fabdns.Cluster.Region = "west"
 
 			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
 			testCase := test.Case{
@@ -598,12 +604,14 @@ func testHeadlessServices() {
 		createGlobalService(testK8sClient, &testservice)
 
 		fabdns = &FabDNS{
-			Zones:         []string{testZone},
-			TTL:           5,
-			Client:        testK8sClient,
-			Cluster:       "haidian",
-			ClusterZone:   "beijing",
-			ClusterRegion: "north",
+			Zones:  []string{testZone},
+			TTL:    5,
+			Client: testK8sClient,
+			Cluster: ClusterInfo{
+				Name:   "haidian",
+				Zone:   "beijing",
+				Region: "north",
+			},
 		}
 		testRecorder = dnstest.NewRecorder(&test.ResponseWriter{})
 	})

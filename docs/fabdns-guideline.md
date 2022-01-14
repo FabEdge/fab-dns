@@ -1,22 +1,22 @@
-# Fabdns配置参考
+# Fabdns使用指南
 
 
-## 1. fabdns configmap
+## 1. fabdns 参数说明
 ```yaml
 fabdns global {
    masterurl https://10.20.8.24:6443
    kubeconfig /root/.kube/config
    cluster fabedge
-   cluster-zone beijing
-   cluster-region north
+   zone beijing
+   region north
    ttl 30
 }
 ```
 - masterurl: 集群API请求URL (集群内不需指定)
 - kubeconfig: 集群kubeconfig文件路径 (集群内不需指定)
 - cluster: 集群名称
-- cluster-zone: 集群所在zone
-- cluster-region: 集群所在region
+- zone: 集群所在zone
+- region: 集群所在region
 - ttl: DNS TTL (范围(0, 3600]，默认5s)
 
 样例：
@@ -34,8 +34,8 @@ data:
         ready
         fabdns global {
            cluster fabedge
-           cluster-zone beijing
-           cluster-region north
+           zone beijing
+           region north
            ttl 30
         }
         cache 30
@@ -44,7 +44,7 @@ data:
 ```
 
 
-## 2.coredns configmap
+## 2.coredns 转发配置
 配置文件Corefile设置转发global域的解析到fabdns:
 ```yaml
  global {

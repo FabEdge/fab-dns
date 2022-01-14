@@ -78,13 +78,13 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 				return nil, c.ArgErr()
 			}
 			cluster = args[0]
-		case "cluster-zone":
+		case "zone":
 			args := c.RemainingArgs()
 			if len(args) != 1 {
 				return nil, c.ArgErr()
 			}
 			clusterZone = args[0]
-		case "cluster-region":
+		case "region":
 			args := c.RemainingArgs()
 			if len(args) != 1 {
 				return nil, c.ArgErr()
@@ -122,13 +122,15 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 	}
 
 	fabdns := &FabDNS{
-		Zones:         zones,
-		Fall:          fabFall,
-		TTL:           uint32(ttl),
-		Client:        cli,
-		Cluster:       cluster,
-		ClusterZone:   clusterZone,
-		ClusterRegion: clusterRegion,
+		Zones:  zones,
+		Fall:   fabFall,
+		TTL:    uint32(ttl),
+		Client: cli,
+		Cluster: ClusterInfo{
+			Name:   cluster,
+			Zone:   clusterZone,
+			Region: clusterRegion,
+		},
 	}
 
 	return fabdns, nil

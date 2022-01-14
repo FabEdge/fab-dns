@@ -110,14 +110,14 @@ func testCorrectConfig() {
 		BeforeEach(func() {
 			config = `fabdns {
 				cluster haidian
-				cluster-zone beijing
-				cluster-region north
+				zone beijing
+				region north
 			}`
 		})
 		It("should succeed with the specified cluster location infos", func() {
-			Expect(fabdns.Cluster).To(Equal("haidian"))
-			Expect(fabdns.ClusterZone).To(Equal("beijing"))
-			Expect(fabdns.ClusterRegion).To(Equal("north"))
+			Expect(fabdns.Cluster.Name).To(Equal("haidian"))
+			Expect(fabdns.Cluster.Zone).To(Equal("beijing"))
+			Expect(fabdns.Cluster.Region).To(Equal("north"))
 		})
 	})
 
@@ -127,7 +127,7 @@ func testCorrectConfig() {
 				ttl 30
 			}`
 		})
-		It("should succeed with the specified cluster location infos", func() {
+		It("should succeed with the specified ttl", func() {
 			Expect(fabdns.TTL).To(Equal(uint32(30)))
 		})
 	})

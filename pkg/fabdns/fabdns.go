@@ -36,14 +36,18 @@ var log = clog.NewWithPlugin(PluginName)
 
 // FabDNS implements a plugin supporting multi-cluster FabDNS spec.
 type FabDNS struct {
-	Next          plugin.Handler
-	Zones         []string
-	Fall          fall.F
-	TTL           uint32
-	Client        client.Client
-	Cluster       string
-	ClusterZone   string
-	ClusterRegion string
+	Next    plugin.Handler
+	Zones   []string
+	Fall    fall.F
+	TTL     uint32
+	Client  client.Client
+	Cluster ClusterInfo
+}
+
+type ClusterInfo struct {
+	Name   string
+	Zone   string
+	Region string
 }
 
 // ServeDNS implements the plugin.Handler interface.
@@ -141,7 +145,7 @@ func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]
 		}
 	} else {
 		// local cluster endpoints preference
-		clustername = f.Cluster
+		clustername = f.Cluster.Name
 	}
 	for _, endpoint := range globalService.Spec.Endpoints {
 		switch {
@@ -155,11 +159,11 @@ func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]
 			}
 			clusterMatchedRecords = append(clusterMatchedRecords, f.generateRecords(state, endpoint)...)
 
-		case endpoint.Zone == f.ClusterZone:
+		case endpoint.Zone == f.Cluster.Zone:
 			// in zone
 			inZoneRecords = append(inZoneRecords, f.generateRecords(state, endpoint)...)
 
-		case endpoint.Region == f.ClusterRegion:
+		case endpoint.Region == f.Cluster.Region:
 			// in region
 			inRegionRecords = append(inRegionRecords, f.generateRecords(state, endpoint)...)
 		}
