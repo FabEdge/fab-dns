@@ -12,8 +12,8 @@ data:
         ready
         fabdns global {
            cluster fabedge
-           cluster-zone beijing
-           cluster-region north
+           zone beijing
+           region north
            ttl 30
         }
         cache 30
