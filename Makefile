@@ -39,7 +39,7 @@ service-hub-image:
 	docker build -t fabedge/service-hub:latest -f build/service-hub/Dockerfile .
 
 fabdns:
-	GOOS=${GOOS} go build -o ${OUTPUT_DIR}/$@ ./cmd/$@
+	GOOS=${GOOS} go build -ldflags="-X github.com/coredns/coredns/coremain.GitCommit=$(GIT_COMMIT)" -o ${OUTPUT_DIR}/$@ ./cmd/$@
 
 fabdns-image:
 	docker build -t fabedge/fabdns:latest -f build/fabdns/Dockerfile .
