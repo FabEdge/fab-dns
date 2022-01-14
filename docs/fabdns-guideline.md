@@ -17,7 +17,7 @@ fabdns global {
 - cluster: 集群名称
 - zone: 集群所在zone
 - region: 集群所在region
-- ttl: DNS TTL (范围(0, 3600]，默认5s)
+- ttl: DNS TTL (范围[0, 3600]，默认5s)
 
 样例：
 ```yaml
