@@ -48,8 +48,8 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 
 	zones := plugin.OriginsFromArgsOrServerBlock(c.RemainingArgs(), c.ServerBlockKeys)
 	var (
+		ttl           int = -1
 		fabFall       fall.F
-		ttl           int
 		masterurl     string
 		kubeconfig    string
 		cluster       string
@@ -100,14 +100,14 @@ func fabdnsParse(c *caddy.Controller) (*FabDNS, error) {
 			if err != nil {
 				return nil, c.Errf("ttl %v", err)
 			}
-			if ttl <= 0 || ttl > 3600 {
-				return nil, c.Errf("ttl %d is out of range (0, 3600], default ttl is %d if not configured", ttl, defaultTTL)
+			if ttl < 0 || ttl > 3600 {
+				return nil, c.Errf("ttl %d is out of range [0, 3600], default ttl is %d if not configured", ttl, defaultTTL)
 			}
 		default:
 			return nil, c.Errf("unknown property '%s'", c.Val())
 		}
 	}
-	if ttl == 0 {
+	if ttl < 0 {
 		ttl = defaultTTL
 	}
 
