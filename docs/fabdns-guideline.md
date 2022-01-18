@@ -1,6 +1,5 @@
 # Fabdns使用指南
 
-
 ## 1. fabdns 参数说明
 ```yaml
 fabdns global {
@@ -45,15 +44,16 @@ data:
 
 
 ## 2.coredns 转发配置
-配置文件Corefile设置转发global域的解析到fabdns:
+要解析global域的域名，除了启动fabdns外，还需要在coredns里增加转发配置项: 
 ```yaml
  global {
      forward . 10.96.140.51
  }
 ```
-10.96.140.51 即 fabdns service IP **需要根据创建的fabdns service实际ClusterIP进行修改**
+10.96.140.51是 fabdns service的ClusterIP，根据实际实际情况配置**
 
-样例：
+有些环境的DNS解析服务可能不是直接由kube-system/coredns来负责，而是由其他组件比如nodelocaldns,edge-coredns解析，这时候需要修改这些组件的配置，下面以kube-system/coredns configmap为例：
+
 ```yaml
 apiVersion: v1
 kind: ConfigMap
@@ -65,6 +65,7 @@ data:
     global {
         forward . 10.96.140.51
     }
+    
     .:53 {
         errors
         health {
@@ -86,4 +87,3 @@ data:
         loadbalance
     }
 ```
-**注：coredns原配置保持不变，仅增加转发到fabdns的配置项**
