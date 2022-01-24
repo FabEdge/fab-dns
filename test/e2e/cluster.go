@@ -271,8 +271,8 @@ func (c *Cluster) waitForClusterPodsReady(wg *sync.WaitGroup, namespace string) 
 	}
 }
 
-func (c Cluster) generateInClusterGlobalServiceEndpoints(name, namespace string, isHeadless bool) (endpoints []apis.Endpoint, err error) {
-	if isHeadless {
+func (c Cluster) generateGlobalServiceEndpoints(name, namespace string, serviceType apis.ServiceType) (endpoints []apis.Endpoint, err error) {
+	if serviceType == apis.Headless {
 		var headlessEps corev1.Endpoints
 		err = c.client.Get(context.TODO(),
 			client.ObjectKey{Name: name, Namespace: namespace},
@@ -317,7 +317,7 @@ func (c *Cluster) waitForGlobalServicesReady(wg *sync.WaitGroup, namespace strin
 	timeout := time.Duration(framework.TestContext.WaitTimeout) * time.Second
 	err := wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
 		if !c.clusterIPGlobalServiceReady {
-			ready, err := c.checkGlobalServiceReady(serviceCloudClusterIP, namespace, apis.ClusterIP, expectedGlobalServices[string(apis.ClusterIP)])
+			ready, err := c.checkGlobalServiceReady(serviceCloudClusterIP, namespace, apis.ClusterIP, expectedGlobalServices[serviceCloudClusterIP])
 			if err != nil {
 				return false, err
 			}
@@ -328,7 +328,7 @@ func (c *Cluster) waitForGlobalServicesReady(wg *sync.WaitGroup, namespace strin
 		}
 
 		if !c.headlessGlobalServiceReady {
-			ready, err := c.checkGlobalServiceReady(serviceCloudHeadless, namespace, apis.Headless, expectedGlobalServices[string(apis.Headless)])
+			ready, err := c.checkGlobalServiceReady(serviceCloudHeadless, namespace, apis.Headless, expectedGlobalServices[serviceCloudHeadless])
 			if err != nil {
 				return false, err
 			}
@@ -359,7 +359,7 @@ func (c Cluster) checkGlobalServiceReady(name, namespace string, serviceType api
 	}
 
 	if globalservice.Spec.Type != serviceType {
-		return false, fmt.Errorf("get globalservice %s type is %s, %s type is expected",
+		return false, fmt.Errorf("%s globalservice type is %s, but expected type is %s",
 			name, string(globalservice.Spec.Type), string(serviceType))
 	}
 
@@ -368,11 +368,10 @@ func (c Cluster) checkGlobalServiceReady(name, namespace string, serviceType api
 		return false, nil
 	}
 
-	isHeadless := serviceType == apis.Headless
 	for _, expect := range expectedGlobalService.Spec.Endpoints {
 		contains := false
 		for _, ep := range globalservice.Spec.Endpoints {
-			if equal(expect, ep, isHeadless) {
+			if equalEndpoints(expect, ep) {
 				contains = true
 				break
 			}

@@ -155,8 +155,7 @@ func fabdnsE2eTestPrepare() {
 	prepareServicesOnEachCluster(testNamespace)
 	WaitForAllClusterPodsReady(testNamespace)
 
-	expectedGlobalServices := generateExpectedGlobalServices()
-	WaitForAllClusterGlobalServicesReady(testNamespace, expectedGlobalServices)
+	WaitForAllClusterGlobalServicesReady(testNamespace)
 }
 
 func prepareClustersNamespace(namespace string) {
@@ -204,15 +203,11 @@ func WaitForAllClusterPodsReady(namespace string) {
 
 func generateExpectedGlobalServices() map[string]apis.GlobalService {
 	globalServices := make(map[string]apis.GlobalService)
-	var g apis.GlobalService
+	g := generateGlobalService(serviceCloudClusterIP, testNamespace, apis.ClusterIP)
+	globalServices[serviceCloudClusterIP] = g
 
-	// clusterIP globalservice
-	g = generateGlobalService(serviceCloudClusterIP, testNamespace, apis.ClusterIP)
-	globalServices[string(apis.ClusterIP)] = g
-
-	// headless globalservice
 	g = generateGlobalService(serviceCloudHeadless, testNamespace, apis.Headless)
-	globalServices[string(apis.Headless)] = g
+	globalServices[serviceCloudHeadless] = g
 
 	return globalServices
 }
@@ -224,7 +219,7 @@ func generateGlobalService(name, namespace string, serviceType apis.ServiceType)
 	g.Namespace = namespace
 	for _, ip := range clusterIPs {
 		cluster := clusterByIP[ip]
-		eps, err := cluster.generateInClusterGlobalServiceEndpoints(g.Name, g.Namespace, serviceType == apis.Headless)
+		eps, err := cluster.generateGlobalServiceEndpoints(g.Name, g.Namespace, serviceType)
 		if err != nil {
 			framework.Failf("cluster %s failed to generate globalservice %s endpoints", cluster.name, g.Name)
 		}
@@ -233,7 +228,8 @@ func generateGlobalService(name, namespace string, serviceType apis.ServiceType)
 	return g
 }
 
-func WaitForAllClusterGlobalServicesReady(namespace string, expectedGlobalServices map[string]apis.GlobalService) {
+func WaitForAllClusterGlobalServicesReady(namespace string) {
+	expectedGlobalServices := generateExpectedGlobalServices()
 	var wg sync.WaitGroup
 	for _, cluster := range clusterByIP {
 		wg.Add(1)
@@ -249,14 +245,13 @@ func WaitForAllClusterGlobalServicesReady(namespace string, expectedGlobalServic
 	framework.Logf("all cluster global services ready")
 }
 
-func equal(a, b apis.Endpoint, headlessEndpoint bool) bool {
-	if headlessEndpoint {
-		if a.Hostname == nil || b.Hostname == nil {
-			return false
-		}
+func equalEndpoints(a, b apis.Endpoint) bool {
+	if a.Hostname != nil && b.Hostname != nil {
 		if *(a.Hostname) != *(b.Hostname) {
 			return false
 		}
+	} else if a.Hostname != b.Hostname {
+		return false
 	}
 	switch {
 	case a.Cluster != b.Cluster:
