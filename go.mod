@@ -9,6 +9,7 @@ require (
 	github.com/go-chi/chi/v5 v5.0.0
 	github.com/go-logr/logr v1.0.0
 	github.com/miekg/dns v1.1.43
+	github.com/olekukonko/tablewriter v0.0.1
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.13.0
 	github.com/spf13/pflag v1.0.5
