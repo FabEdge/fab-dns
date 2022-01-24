@@ -142,16 +142,16 @@ func (c Cluster) prepareStatefulSet(name, namespace string, replicas int32) {
 		Spec: v1.StatefulSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					labelKeyInstance: serviceCloudHeadlessNginx,
+					labelKeyInstance: serviceCloudHeadless,
 				},
 			},
 			Replicas:    &replicas,
-			ServiceName: serviceCloudHeadlessNginx,
+			ServiceName: serviceCloudHeadless,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
 						labelKeyApp:      appNetTool,
-						labelKeyInstance: serviceCloudHeadlessNginx,
+						labelKeyInstance: serviceCloudHeadless,
 					},
 				},
 				Spec: podSpecWithAffinity(),
@@ -170,7 +170,7 @@ func (c Cluster) prepareDeployment(name, namespace string, replicas int32) {
 		Spec: v1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					labelKeyInstance: serviceCloudClusterIPNginx,
+					labelKeyInstance: serviceCloudClusterIP,
 				},
 			},
 			Replicas: &replicas,
@@ -178,7 +178,7 @@ func (c Cluster) prepareDeployment(name, namespace string, replicas int32) {
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
 						labelKeyApp:      appNetTool,
-						labelKeyInstance: serviceCloudClusterIPNginx,
+						labelKeyInstance: serviceCloudClusterIP,
 					},
 				},
 				Spec: podSpecWithAffinity(),
@@ -317,7 +317,7 @@ func (c *Cluster) waitForGlobalServicesReady(wg *sync.WaitGroup, namespace strin
 	timeout := time.Duration(framework.TestContext.WaitTimeout) * time.Second
 	err := wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
 		if !c.clusterIPGlobalServiceReady {
-			ready, err := c.checkGlobalServiceReady(serviceCloudClusterIPNginx, namespace, apis.ClusterIP, expectedGlobalServices[string(apis.ClusterIP)])
+			ready, err := c.checkGlobalServiceReady(serviceCloudClusterIP, namespace, apis.ClusterIP, expectedGlobalServices[string(apis.ClusterIP)])
 			if err != nil {
 				return false, err
 			}
@@ -328,7 +328,7 @@ func (c *Cluster) waitForGlobalServicesReady(wg *sync.WaitGroup, namespace strin
 		}
 
 		if !c.headlessGlobalServiceReady {
-			ready, err := c.checkGlobalServiceReady(serviceCloudHeadlessNginx, namespace, apis.Headless, expectedGlobalServices[string(apis.Headless)])
+			ready, err := c.checkGlobalServiceReady(serviceCloudHeadless, namespace, apis.Headless, expectedGlobalServices[string(apis.Headless)])
 			if err != nil {
 				return false, err
 			}

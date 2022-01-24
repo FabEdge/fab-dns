@@ -31,11 +31,11 @@ var _ = Describe("FabDNS", func() {
 		for i := 0; i < len(clusterIPs); i++ {
 			cluster := clusterByIP[clusterIPs[i]]
 			debugPod := corev1.Pod{}
-			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: multiClusterNamespace, Name: netToolDebugPodName}, &debugPod)
+			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: debugTool}, &debugPod)
 			framework.ExpectNoError(err)
 
-			serviceName := fmt.Sprintf("%s.%s.svc.%s", serviceCloudClusterIPNginx, multiClusterNamespace, framework.TestContext.FabdnsZone)
-			framework.Logf("pod %s of cluster %s visit global service %s ", netToolDebugPodName, cluster.name, serviceName)
+			serviceName := fmt.Sprintf("%s.%s.svc.%s", serviceCloudClusterIP, testNamespace, framework.TestContext.FabdnsZone)
+			framework.Logf("pod %s of cluster %s visit global service %s ", debugTool, cluster.name, serviceName)
 			_, _, err = cluster.execCurl(debugPod, serviceName)
 			framework.ExpectNoError(err)
 		}
@@ -45,11 +45,11 @@ var _ = Describe("FabDNS", func() {
 		for i := 0; i < len(clusterIPs); i++ {
 			cluster := clusterByIP[clusterIPs[i]]
 			debugPod := corev1.Pod{}
-			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: multiClusterNamespace, Name: netToolDebugPodName}, &debugPod)
+			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: debugTool}, &debugPod)
 			framework.ExpectNoError(err)
 
-			serviceName := fmt.Sprintf("%s.%s.svc.%s", serviceCloudHeadlessNginx, multiClusterNamespace, framework.TestContext.FabdnsZone)
-			framework.Logf("pod %s of cluster %s visit global service %s ", netToolDebugPodName, cluster.name, serviceName)
+			serviceName := fmt.Sprintf("%s.%s.svc.%s", serviceCloudHeadless, testNamespace, framework.TestContext.FabdnsZone)
+			framework.Logf("pod %s of cluster %s visit global service %s ", debugTool, cluster.name, serviceName)
 			_, _, err = cluster.execCurl(debugPod, serviceName)
 			framework.ExpectNoError(err)
 		}
@@ -59,17 +59,17 @@ var _ = Describe("FabDNS", func() {
 		for i := 0; i < len(clusterIPs); i++ {
 			c1 := clusterByIP[clusterIPs[i]]
 			debugPod := corev1.Pod{}
-			err := c1.client.Get(context.TODO(), client.ObjectKey{Namespace: multiClusterNamespace, Name: netToolDebugPodName}, &debugPod)
+			err := c1.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: debugTool}, &debugPod)
 			framework.ExpectNoError(err)
 
 			for j := 0; j < len(clusterIPs); j++ {
 				c2 := clusterByIP[clusterIPs[j]]
 
 				for x := 0; x < replicas; x++ {
-					hostname := fmt.Sprintf("%s-%d", netToolStatefulSet, x)
+					hostname := fmt.Sprintf("%s-%d", statefulSet, x)
 					serviceName := fmt.Sprintf("%s.%s.%s.%s.svc.%s", hostname, c2.name,
-						serviceCloudHeadlessNginx, multiClusterNamespace, framework.TestContext.FabdnsZone)
-					framework.Logf("pod %s of cluster %s visit endpoint %s", netToolDebugPodName, c1.name, serviceName)
+						serviceCloudHeadless, testNamespace, framework.TestContext.FabdnsZone)
+					framework.Logf("pod %s of cluster %s visit endpoint %s", debugTool, c1.name, serviceName)
 					_, _, err := c1.execCurl(debugPod, serviceName)
 					framework.ExpectNoError(err)
 				}

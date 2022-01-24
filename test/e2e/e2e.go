@@ -35,13 +35,13 @@ import (
 )
 
 const (
-	appNetTool            = "fabdns-net-tool"
-	multiClusterNamespace = "fabdns-e2e-test"
+	appNetTool    = "fabdns-net-tool"
+	testNamespace = "fabdns-e2e-test"
 
-	netToolDebugPodName = "net-tool-debug"
-	netToolDeploy       = "net-tool-dp"
-	netToolStatefulSet  = "net-tool-sts"
-	replicas            = 2
+	debugTool   = "debug-tool"
+	deployment  = "nginx"
+	statefulSet = "mysql"
+	replicas    = 2
 
 	labelKeyApp           = "app"
 	labelKeyInstance      = "instance"
@@ -49,8 +49,8 @@ const (
 )
 
 var (
-	serviceCloudClusterIPNginx = "clusterip-nginx"
-	serviceCloudHeadlessNginx  = "headless-nginx"
+	serviceCloudClusterIP = "nginx"
+	serviceCloudHeadless  = "mysql"
 
 	// 标记是否有失败的spec
 	hasFailedSpec = false
@@ -65,8 +65,8 @@ func init() {
 	_ = apis.AddToScheme(scheme.Scheme)
 
 	rand.Seed(int64(time.Now().UnixNano()))
-	serviceCloudClusterIPNginx = getName(serviceCloudClusterIPNginx)
-	serviceCloudHeadlessNginx = getName(serviceCloudHeadlessNginx)
+	serviceCloudClusterIP = getName(serviceCloudClusterIP)
+	serviceCloudHeadless = getName(serviceCloudHeadless)
 }
 
 // RunE2ETests checks configuration parameters (specified through flags) and then runs
@@ -150,13 +150,13 @@ func fabdnsE2eTestPrepare() {
 
 	framework.Logf("cluster list: %v", clusterNameList)
 
-	prepareClustersNamespace(multiClusterNamespace)
-	preparePodsOnEachCluster(multiClusterNamespace)
-	prepareServicesOnEachCluster(multiClusterNamespace)
-	WaitForAllClusterPodsReady(multiClusterNamespace)
+	prepareClustersNamespace(testNamespace)
+	preparePodsOnEachCluster(testNamespace)
+	prepareServicesOnEachCluster(testNamespace)
+	WaitForAllClusterPodsReady(testNamespace)
 
 	expectedGlobalServices := generateExpectedGlobalServices()
-	WaitForAllClusterGlobalServicesReady(multiClusterNamespace, expectedGlobalServices)
+	WaitForAllClusterGlobalServicesReady(testNamespace, expectedGlobalServices)
 }
 
 func prepareClustersNamespace(namespace string) {
@@ -171,9 +171,9 @@ func preparePodsOnEachCluster(namespace string) {
 	framework.Logf("Prepare pods on each cluster")
 	for _, clusterIP := range clusterIPs {
 		if cluster, ok := clusterByIP[clusterIP]; ok {
-			cluster.prepareStatefulSet(netToolStatefulSet, namespace, replicas)
-			cluster.prepareDeployment(netToolDeploy, namespace, replicas)
-			cluster.prepareDebugPod(netToolDebugPodName, namespace)
+			cluster.prepareStatefulSet(statefulSet, namespace, replicas)
+			cluster.prepareDeployment(deployment, namespace, replicas)
+			cluster.prepareDebugPod(debugTool, namespace)
 		}
 	}
 }
@@ -181,8 +181,8 @@ func preparePodsOnEachCluster(namespace string) {
 func prepareServicesOnEachCluster(namespace string) {
 	for _, clusterIP := range clusterIPs {
 		if cluster, ok := clusterByIP[clusterIP]; ok {
-			cluster.prepareService(serviceCloudClusterIPNginx, namespace, false)
-			cluster.prepareService(serviceCloudHeadlessNginx, namespace, true)
+			cluster.prepareService(serviceCloudClusterIP, namespace, false)
+			cluster.prepareService(serviceCloudHeadless, namespace, true)
 		}
 	}
 }
@@ -207,11 +207,11 @@ func generateExpectedGlobalServices() map[string]apis.GlobalService {
 	var g apis.GlobalService
 
 	// clusterIP globalservice
-	g = generateGlobalService(serviceCloudClusterIPNginx, multiClusterNamespace, apis.ClusterIP)
+	g = generateGlobalService(serviceCloudClusterIP, testNamespace, apis.ClusterIP)
 	globalServices[string(apis.ClusterIP)] = g
 
 	// headless globalservice
-	g = generateGlobalService(serviceCloudHeadlessNginx, multiClusterNamespace, apis.Headless)
+	g = generateGlobalService(serviceCloudHeadless, testNamespace, apis.Headless)
 	globalServices[string(apis.Headless)] = g
 
 	return globalServices
