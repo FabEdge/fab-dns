@@ -52,6 +52,9 @@ else
 	go test ./pkg/...
 endif
 
+e2e-test:
+	go test ${LDFLAGS} -c ./test/e2e -o ${OUTPUT_DIR}/fabdns-e2e.test
+
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=fabedge-admin paths="./pkg/..." output:dir:crd=deploy/crd
