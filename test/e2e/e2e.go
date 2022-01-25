@@ -35,13 +35,12 @@ import (
 )
 
 const (
-	appNetTool    = "fabdns-net-tool"
 	testNamespace = "fabdns-e2e-test"
 
-	debugTool   = "debug-tool"
-	deployment  = "nginx"
-	statefulSet = "mysql"
-	replicas    = 2
+	nameNetTool     = "net-tool"
+	nameDeployment  = "nginx"
+	nameStatefulSet = "mysql"
+	defaultReplicas = 2
 
 	labelKeyApp           = "app"
 	labelKeyInstance      = "instance"
@@ -49,8 +48,8 @@ const (
 )
 
 var (
-	serviceCloudClusterIP = "nginx"
-	serviceCloudHeadless  = "mysql"
+	serviceNameNginx = "nginx"
+	serviceNameMySQL = "mysql"
 
 	// 标记是否有失败的spec
 	hasFailedSpec = false
@@ -62,8 +61,8 @@ func init() {
 	_ = apis.AddToScheme(scheme.Scheme)
 
 	rand.Seed(int64(time.Now().UnixNano()))
-	serviceCloudClusterIP = getName(serviceCloudClusterIP)
-	serviceCloudHeadless = getName(serviceCloudHeadless)
+	serviceNameNginx = getName(serviceNameNginx)
+	serviceNameMySQL = getName(serviceNameMySQL)
 }
 
 // RunE2ETests checks configuration parameters (specified through flags) and then runs
@@ -123,7 +122,7 @@ func fabdnsE2eTestPrepare() {
 		clusterIPs = append(clusterIPs, ipStr)
 	}
 	if len(clusterIPs) <= 1 {
-		framework.Failf("Error no multi cluster condition, cluster IP list: %v", clusterIPs)
+		framework.Failf("only %d clusters are found, can not do e2e test", len(clusterIPs))
 	}
 	framework.Logf("kubeconfigDir=%v get cluster IP list: %v", configDir, clusterIPs)
 
@@ -131,7 +130,7 @@ func fabdnsE2eTestPrepare() {
 	for _, clusterIP := range clusterIPs {
 		cluster, err := generateCluster(configDir, clusterIP)
 		if err != nil {
-			framework.Logf("Error generating cluster <%s> err: %v", clusterIP, err)
+			framework.Logf("generating cluster <%s> err: %v", clusterIP, err)
 			continue
 		}
 
@@ -140,9 +139,8 @@ func fabdnsE2eTestPrepare() {
 	}
 
 	if len(clusterNameList) <= 1 {
-		framework.Failf("Error no multi cluster condition, cluster list: %v", clusterNameList)
+		framework.Failf("only %d clusters are found, can not do e2e test", len(clusterNameList))
 	}
-
 	framework.Logf("cluster list: %v", clusterNameList)
 
 	prepareClustersNamespace(testNamespace)
@@ -162,16 +160,16 @@ func prepareClustersNamespace(namespace string) {
 func preparePodsOnEachCluster(namespace string) {
 	framework.Logf("Prepare pods on each cluster")
 	for _, cluster := range clusters {
-		cluster.prepareStatefulSet(statefulSet, namespace, replicas)
-		cluster.prepareDeployment(deployment, namespace, replicas)
-		cluster.prepareDebugPod(debugTool, namespace)
+		cluster.prepareStatefulSet(nameStatefulSet, namespace, defaultReplicas)
+		cluster.prepareDeployment(nameDeployment, namespace, defaultReplicas)
+		cluster.prepareDebugPod(nameNetTool, namespace)
 	}
 }
 
 func prepareServicesOnEachCluster(namespace string) {
 	for _, cluster := range clusters {
-		cluster.prepareService(serviceCloudClusterIP, namespace, false)
-		cluster.prepareService(serviceCloudHeadless, namespace, true)
+		cluster.prepareService(serviceNameNginx, namespace, false)
+		cluster.prepareService(serviceNameMySQL, namespace, true)
 	}
 }
 
@@ -192,11 +190,11 @@ func WaitForAllClusterPodsReady(namespace string) {
 
 func generateExpectedGlobalServices() map[string]apis.GlobalService {
 	globalServices := make(map[string]apis.GlobalService)
-	g := generateGlobalService(serviceCloudClusterIP, testNamespace, apis.ClusterIP)
-	globalServices[serviceCloudClusterIP] = g
+	g := generateGlobalService(serviceNameNginx, testNamespace, apis.ClusterIP)
+	globalServices[serviceNameNginx] = g
 
-	g = generateGlobalService(serviceCloudHeadless, testNamespace, apis.Headless)
-	globalServices[serviceCloudHeadless] = g
+	g = generateGlobalService(serviceNameMySQL, testNamespace, apis.Headless)
+	globalServices[serviceNameMySQL] = g
 
 	return globalServices
 }
@@ -227,6 +225,8 @@ func WaitForAllClusterGlobalServicesReady(namespace string) {
 
 	for _, cluster := range clusters {
 		if !cluster.ready() {
+			framework.Logf("cluster %s status: podsReady=%t nginxGlobalServiceReady=%t mysqlGlobalServiceReady=%t",
+				cluster.name, cluster.podsReady, cluster.nginxGlobalServiceReady, cluster.mysqlGlobalServiceReady)
 			framework.Failf("clusters exist not ready global services")
 		}
 	}

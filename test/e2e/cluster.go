@@ -27,22 +27,19 @@ import (
 )
 
 type Cluster struct {
-	name                        string
-	zone                        string
-	region                      string
-	role                        string
-	config                      *rest.Config
-	client                      client.Client
-	clientset                   kubernetes.Interface
-	podsReady                   bool
-	clusterIPGlobalServiceReady bool
-	headlessGlobalServiceReady  bool
+	name                    string
+	zone                    string
+	region                  string
+	config                  *rest.Config
+	client                  client.Client
+	clientset               kubernetes.Interface
+	podsReady               bool
+	nginxGlobalServiceReady bool
+	mysqlGlobalServiceReady bool
 }
 
 func (c Cluster) ready() bool {
-	framework.Logf("cluster %s status podsReady=%t clusterIPGlobalServiceReady=%t headlessGlobalServiceReady=%t",
-		c.name, c.podsReady, c.clusterIPGlobalServiceReady, c.headlessGlobalServiceReady)
-	return c.podsReady && c.clusterIPGlobalServiceReady && c.headlessGlobalServiceReady
+	return c.podsReady && c.nginxGlobalServiceReady && c.mysqlGlobalServiceReady
 }
 
 func generateCluster(cfgDir, ip string) (cluster Cluster, err error) {
@@ -75,43 +72,16 @@ func generateCluster(cfgDir, ip string) (cluster Cluster, err error) {
 		clientset: clientset,
 	}
 
-	// get cluster name,role,zone,region
-	err = cluster.generateDetail()
+	// get cluster name,zone,region
+	args := []string{"--cluster=", "--zone=", "--region="}
+	args, err = cluster.getValuesFromDeploymentArguments("service-hub", "fabedge", args...)
 	if err != nil {
 		return
 	}
+	cluster.name = args[0]
+	cluster.zone = args[1]
+	cluster.region = args[2]
 	return cluster, nil
-}
-
-func (c *Cluster) generateDetail() error {
-	// deploy fabedge-operator, ns fabedge
-	var err error
-	args := []string{"--cluster=", "--cluster-role="}
-	args, err = c.getDeployArgs("fabedge-operator", "fabedge", args...)
-	if err != nil {
-		return err
-	}
-	c.name = args[0][len("--cluster="):]
-	c.role = args[1][len("--cluster-role="):]
-
-	if len(c.name) == 0 || len(c.role) == 0 {
-		return fmt.Errorf("clusterName=%s or clusterRole=%s", c.name, c.role)
-	}
-
-	// deploy service-hub, ns fabedge
-	args = []string{"--cluster=", "--zone=", "--region="}
-	args, err = c.getDeployArgs("service-hub", "fabedge", args...)
-	if err != nil {
-		return err
-	}
-	clusterName := args[0][len("--cluster="):]
-	if clusterName != c.name {
-		return fmt.Errorf("service-hub set different cluster name %s", clusterName)
-	}
-	c.zone = args[1][len("--zone="):]
-	c.region = args[2][len("--region="):]
-
-	return nil
 }
 
 func (c Cluster) prepareNamespace(namespace string) {
@@ -142,16 +112,16 @@ func (c Cluster) prepareStatefulSet(name, namespace string, replicas int32) {
 		Spec: v1.StatefulSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					labelKeyInstance: serviceCloudHeadless,
+					labelKeyInstance: serviceNameMySQL,
 				},
 			},
 			Replicas:    &replicas,
-			ServiceName: serviceCloudHeadless,
+			ServiceName: serviceNameMySQL,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						labelKeyApp:      appNetTool,
-						labelKeyInstance: serviceCloudHeadless,
+						labelKeyApp:      nameNetTool,
+						labelKeyInstance: serviceNameMySQL,
 					},
 				},
 				Spec: podSpecWithAffinity(),
@@ -170,15 +140,15 @@ func (c Cluster) prepareDeployment(name, namespace string, replicas int32) {
 		Spec: v1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					labelKeyInstance: serviceCloudClusterIP,
+					labelKeyInstance: serviceNameNginx,
 				},
 			},
 			Replicas: &replicas,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						labelKeyApp:      appNetTool,
-						labelKeyInstance: serviceCloudClusterIP,
+						labelKeyApp:      nameNetTool,
+						labelKeyInstance: serviceNameNginx,
 					},
 				},
 				Spec: podSpecWithAffinity(),
@@ -194,7 +164,7 @@ func (c Cluster) prepareDebugPod(name, namespace string) {
 			Name:      name,
 			Namespace: namespace,
 			Labels: map[string]string{
-				labelKeyApp: appNetTool,
+				labelKeyApp: nameNetTool,
 			},
 		},
 		Spec: podSpecWithAffinity(),
@@ -243,7 +213,7 @@ func (c *Cluster) waitForClusterPodsReady(wg *sync.WaitGroup, namespace string) 
 	err := wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
 		var pods corev1.PodList
 		err := c.client.List(context.TODO(), &pods, client.InNamespace(namespace), client.MatchingLabels{
-			labelKeyApp: appNetTool,
+			labelKeyApp: nameNetTool,
 		})
 		if err != nil {
 			return false, err
@@ -316,26 +286,26 @@ func (c *Cluster) waitForGlobalServicesReady(wg *sync.WaitGroup, namespace strin
 	framework.Logf("Waiting for cluster %s all global services to be ready", c.name)
 	timeout := time.Duration(framework.TestContext.WaitTimeout) * time.Second
 	err := wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		if !c.clusterIPGlobalServiceReady {
-			ready, err := c.checkGlobalServiceReady(serviceCloudClusterIP, namespace, apis.ClusterIP, expectedGlobalServices[serviceCloudClusterIP])
+		if !c.nginxGlobalServiceReady {
+			ready, err := c.checkGlobalServiceReady(serviceNameNginx, namespace, apis.ClusterIP, expectedGlobalServices[serviceNameNginx])
 			if err != nil {
 				return false, err
 			}
 			if !ready {
 				return false, nil
 			}
-			c.clusterIPGlobalServiceReady = true
+			c.nginxGlobalServiceReady = true
 		}
 
-		if !c.headlessGlobalServiceReady {
-			ready, err := c.checkGlobalServiceReady(serviceCloudHeadless, namespace, apis.Headless, expectedGlobalServices[serviceCloudHeadless])
+		if !c.mysqlGlobalServiceReady {
+			ready, err := c.checkGlobalServiceReady(serviceNameMySQL, namespace, apis.Headless, expectedGlobalServices[serviceNameMySQL])
 			if err != nil {
 				return false, err
 			}
 			if !ready {
 				return false, nil
 			}
-			c.headlessGlobalServiceReady = true
+			c.mysqlGlobalServiceReady = true
 		}
 
 		return true, nil
@@ -392,7 +362,7 @@ func (c Cluster) getServiceIP(servicename, namespace string) (string, error) {
 	return svc.Spec.ClusterIP, nil
 }
 
-func (c Cluster) getDeployArgs(name, namespace string, argKeys ...string) ([]string, error) {
+func (c Cluster) getValuesFromDeploymentArguments(name, namespace string, argKeys ...string) ([]string, error) {
 	// e.g. deploy service-hub, ns fabedge
 	dp, err := c.clientset.AppsV1().Deployments(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
@@ -407,7 +377,7 @@ func (c Cluster) getDeployArgs(name, namespace string, argKeys ...string) ([]str
 	for _, v := range args {
 		for _, key := range argKeys {
 			if strings.HasPrefix(v, key) {
-				results[indexes[key]] = v
+				results[indexes[key]] = v[len(key):]
 			}
 		}
 	}

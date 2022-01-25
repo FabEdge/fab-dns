@@ -25,46 +25,45 @@ import (
 	"github.com/fabedge/fab-dns/test/e2e/framework"
 )
 
-// 测试集群内debug-pod访问集群内和集群间云端服务端点的情况
 var _ = Describe("FabDNS", func() {
-	It("the cloud debug-pod can access ClusterIP global service in cluster [fabdns]", func() {
+	It("any pod can access ClusterIP global service by domain name", func() {
 		for _, cluster := range clusters {
 			debugPod := corev1.Pod{}
-			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: debugTool}, &debugPod)
+			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: nameNetTool}, &debugPod)
 			framework.ExpectNoError(err)
 
-			serviceName := fmt.Sprintf("%s.%s.svc.%s", serviceCloudClusterIP, testNamespace, framework.TestContext.FabdnsZone)
-			framework.Logf("pod %s of cluster %s visit global service %s ", debugTool, cluster.name, serviceName)
+			serviceName := fmt.Sprintf("%s.%s.svc.%s", serviceNameNginx, testNamespace, framework.TestContext.FabdnsZone)
+			framework.Logf("pod %s of cluster %s visit global service %s ", nameNetTool, cluster.name, serviceName)
 			_, _, err = cluster.execCurl(debugPod, serviceName)
 			framework.ExpectNoError(err)
 		}
 	})
 
-	It("the cloud debug-pod can access Headless global service in cluster [fabdns]", func() {
+	It("any pod can access Headless global service by domain name", func() {
 		for _, cluster := range clusters {
 			debugPod := corev1.Pod{}
-			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: debugTool}, &debugPod)
+			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: nameNetTool}, &debugPod)
 			framework.ExpectNoError(err)
 
-			serviceName := fmt.Sprintf("%s.%s.svc.%s", serviceCloudHeadless, testNamespace, framework.TestContext.FabdnsZone)
-			framework.Logf("pod %s of cluster %s visit global service %s ", debugTool, cluster.name, serviceName)
+			serviceName := fmt.Sprintf("%s.%s.svc.%s", serviceNameMySQL, testNamespace, framework.TestContext.FabdnsZone)
+			framework.Logf("pod %s of cluster %s visit global service %s ", nameNetTool, cluster.name, serviceName)
 			_, _, err = cluster.execCurl(debugPod, serviceName)
 			framework.ExpectNoError(err)
 		}
 	})
 
-	It("the cloud debug-pod can access each endpoint of Headless global service in cluster [fabdns]", func() {
+	It("any pod can access each endpoint of Headless global service by domain name", func() {
 		for _, c1 := range clusters {
 			debugPod := corev1.Pod{}
-			err := c1.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: debugTool}, &debugPod)
+			err := c1.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: nameNetTool}, &debugPod)
 			framework.ExpectNoError(err)
 
 			for _, c2 := range clusters {
-				for x := 0; x < replicas; x++ {
-					hostname := fmt.Sprintf("%s-%d", statefulSet, x)
+				for x := 0; x < defaultReplicas; x++ {
+					hostname := fmt.Sprintf("%s-%d", nameStatefulSet, x)
 					serviceName := fmt.Sprintf("%s.%s.%s.%s.svc.%s", hostname, c2.name,
-						serviceCloudHeadless, testNamespace, framework.TestContext.FabdnsZone)
-					framework.Logf("pod %s of cluster %s visit endpoint %s", debugTool, c1.name, serviceName)
+						serviceNameMySQL, testNamespace, framework.TestContext.FabdnsZone)
+					framework.Logf("pod %s of cluster %s visit endpoint %s", nameNetTool, c1.name, serviceName)
 					_, _, err := c1.execCurl(debugPod, serviceName)
 					framework.ExpectNoError(err)
 				}
