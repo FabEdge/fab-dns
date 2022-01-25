@@ -55,10 +55,7 @@ var (
 	// 标记是否有失败的spec
 	hasFailedSpec = false
 
-	// cluster ip list for testing
-	clusterIPs = []string{}
-	// key: cluster master node IP val: cluster Detail
-	clusterByIP = make(map[string]*Cluster)
+	clusters = make([]Cluster, 0)
 )
 
 func init() {
@@ -120,6 +117,7 @@ func fabdnsE2eTestPrepare() {
 	if err != nil {
 		framework.Failf("Error reading kubeconfig dir: %v", err)
 	}
+	clusterIPs := make([]string, 0)
 	for _, f := range filelist {
 		ipStr := f.Name()
 		clusterIPs = append(clusterIPs, ipStr)
@@ -130,21 +128,18 @@ func fabdnsE2eTestPrepare() {
 	framework.Logf("kubeconfigDir=%v get cluster IP list: %v", configDir, clusterIPs)
 
 	clusterNameList := []string{}
-	for i := 0; i < len(clusterIPs); {
-		clusterIP := clusterIPs[i]
+	for _, clusterIP := range clusterIPs {
 		cluster, err := generateCluster(configDir, clusterIP)
 		if err != nil {
 			framework.Logf("Error generating cluster <%s> err: %v", clusterIP, err)
-			clusterIPs = append(clusterIPs[:i], clusterIPs[i+1:]...)
 			continue
 		}
 
 		clusterNameList = append(clusterNameList, cluster.name+":"+clusterIP)
-		clusterByIP[clusterIP] = &cluster
-		i++
+		clusters = append(clusters, cluster)
 	}
 
-	if len(clusterIPs) <= 1 {
+	if len(clusterNameList) <= 1 {
 		framework.Failf("Error no multi cluster condition, cluster list: %v", clusterNameList)
 	}
 
@@ -159,42 +154,36 @@ func fabdnsE2eTestPrepare() {
 }
 
 func prepareClustersNamespace(namespace string) {
-	for _, clusterIP := range clusterIPs {
-		if cluster, ok := clusterByIP[clusterIP]; ok {
-			cluster.prepareNamespace(namespace)
-		}
+	for _, cluster := range clusters {
+		cluster.prepareNamespace(namespace)
 	}
 }
 
 func preparePodsOnEachCluster(namespace string) {
 	framework.Logf("Prepare pods on each cluster")
-	for _, clusterIP := range clusterIPs {
-		if cluster, ok := clusterByIP[clusterIP]; ok {
-			cluster.prepareStatefulSet(statefulSet, namespace, replicas)
-			cluster.prepareDeployment(deployment, namespace, replicas)
-			cluster.prepareDebugPod(debugTool, namespace)
-		}
+	for _, cluster := range clusters {
+		cluster.prepareStatefulSet(statefulSet, namespace, replicas)
+		cluster.prepareDeployment(deployment, namespace, replicas)
+		cluster.prepareDebugPod(debugTool, namespace)
 	}
 }
 
 func prepareServicesOnEachCluster(namespace string) {
-	for _, clusterIP := range clusterIPs {
-		if cluster, ok := clusterByIP[clusterIP]; ok {
-			cluster.prepareService(serviceCloudClusterIP, namespace, false)
-			cluster.prepareService(serviceCloudHeadless, namespace, true)
-		}
+	for _, cluster := range clusters {
+		cluster.prepareService(serviceCloudClusterIP, namespace, false)
+		cluster.prepareService(serviceCloudHeadless, namespace, true)
 	}
 }
 
 func WaitForAllClusterPodsReady(namespace string) {
 	var wg sync.WaitGroup
-	for _, cluster := range clusterByIP {
+	for i := range clusters {
 		wg.Add(1)
-		go cluster.waitForClusterPodsReady(&wg, namespace)
+		go clusters[i].waitForClusterPodsReady(&wg, namespace)
 	}
 	wg.Wait()
 
-	for _, cluster := range clusterByIP {
+	for _, cluster := range clusters {
 		if !cluster.podsReady {
 			framework.Failf("clusters exist not ready pods")
 		}
@@ -217,8 +206,7 @@ func generateGlobalService(name, namespace string, serviceType apis.ServiceType)
 	g.Spec.Type = serviceType
 	g.Name = name
 	g.Namespace = namespace
-	for _, ip := range clusterIPs {
-		cluster := clusterByIP[ip]
+	for _, cluster := range clusters {
 		eps, err := cluster.generateGlobalServiceEndpoints(g.Name, g.Namespace, serviceType)
 		if err != nil {
 			framework.Failf("cluster %s failed to generate globalservice %s endpoints", cluster.name, g.Name)
@@ -231,13 +219,13 @@ func generateGlobalService(name, namespace string, serviceType apis.ServiceType)
 func WaitForAllClusterGlobalServicesReady(namespace string) {
 	expectedGlobalServices := generateExpectedGlobalServices()
 	var wg sync.WaitGroup
-	for _, cluster := range clusterByIP {
+	for i := range clusters {
 		wg.Add(1)
-		go cluster.waitForGlobalServicesReady(&wg, namespace, expectedGlobalServices)
+		go clusters[i].waitForGlobalServicesReady(&wg, namespace, expectedGlobalServices)
 	}
 	wg.Wait()
 
-	for _, cluster := range clusterByIP {
+	for _, cluster := range clusters {
 		if !cluster.ready() {
 			framework.Failf("clusters exist not ready global services")
 		}
