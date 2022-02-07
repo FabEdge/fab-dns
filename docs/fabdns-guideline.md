@@ -50,7 +50,7 @@ data:
      forward . 10.96.140.51
  }
 ```
-10.96.140.51是 fabdns service的ClusterIP，根据实际实际情况配置**
+10.96.140.51是 fabdns service的ClusterIP，**根据实际实际情况配置**
 
 有些环境的DNS解析服务可能不是直接由kube-system/coredns来负责，而是由其他组件比如nodelocaldns,edge-coredns解析，这时候需要修改这些组件的配置，下面以kube-system/coredns configmap为例：
 
