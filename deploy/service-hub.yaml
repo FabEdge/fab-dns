@@ -39,7 +39,7 @@ spec:
               mountPath: /etc/fabedge/
           readinessProbe:
             httpGet:
-              port: 3000
+              port: 3001
               scheme: HTTP
               path: "/readyz/ping"
             initialDelaySeconds: 10
@@ -48,7 +48,7 @@ spec:
             failureThreshold: 3
           livenessProbe:
             httpGet:
-              port: 3000
+              port: 3001
               scheme: HTTP
               path: "/readyz/ping"
             initialDelaySeconds: 10
