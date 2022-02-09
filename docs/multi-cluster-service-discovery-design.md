@@ -32,7 +32,7 @@ FabDNS尝试在提供一个边缘场景下的多集群基于DNS的服务发现�
 
 ### 导出服务
 
-当一个集群向其他集群提供服务时，需要公开自己的服务。做法很简单：在服务的Annotations里添加一个标记:
+当一个集群向其他集群提供服务时，需要公开自己的服务。做法很简单：在服务的Labels里添加一个标记:
 
 `fabedge.io/global-service: "true"`， 例如：
 
@@ -41,7 +41,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: nginx
-  annotations:
+  labels:
   	fabedge.io/global-service: "true"
 spec:
   selector:
