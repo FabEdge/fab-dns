@@ -38,10 +38,6 @@ jobs:
         fi
       id: set_tags
 
-    - name: Remove proxies
-      run: |
-        bash build/utils/no_proxy.sh
-
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v1
 
