@@ -149,9 +149,8 @@ DNS解析由一个DNS组件负责，coredns会将后缀为global的解析请求�
 服务同步组件除了导出导入全局服务信息外，还需要定时向Host集群发起心跳，这样Host的同步组件才会知道该集群的端点信息是有效的，否则当停止接受成员集群的心跳一段时间后，它会将该集群的信息从全局服务里清除。
 
 
-
 [fabedge]: https://github.com/FabEdge/fabedge
 [KEP-1645]: https://github.com/kubernetes/enhancements/tree/master/keps/sig-multicluster/1645-multi-cluster-services-api
 [mcs-api]: https://github.com/kubernetes-sigs/mcs-api
 [lighthouse]: https://submariner.io/getting-started/architecture/service-discovery/
-[cilium-service-discovery]: https://submariner.io/getting-started/architecture/service-discovery/
+[cilium-service-discovery]: https://docs.cilium.io/en/stable/gettingstarted/clustermesh/services/
