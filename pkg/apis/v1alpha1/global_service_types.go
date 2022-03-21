@@ -58,6 +58,8 @@ type Endpoint struct {
 	// +optional
 	TargetRef *corev1.ObjectReference `json:"targetRef,omitempty"`
 
+	// Cluster indicates the cluster where an endpoint is located
+	Cluster string `json:"cluster,omitempty"`
 	// Zone indicates the zone where the endpoint is located
 	Zone string `json:"zone,omitempty"`
 	// Region indicates the region where the endpoint is located

@@ -1,4 +1,59 @@
-CRD_OPTIONS ?= "crd:trivialVersions=true"
+OUTPUT_DIR ?= _output
+
+VERSION := v0.1.0.alpha
+BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')
+GIT_COMMIT := $(shell git rev-parse --short HEAD)
+META := github.com/fabedge/fab-dns/pkg/about
+FLAG_VERSION := ${META}.version=${VERSION}
+FLAG_BUILD_TIME := ${META}.buildTime=${BUILD_TIME}
+FLAG_GIT_COMMIT := ${META}.gitCommit=${GIT_COMMIT}
+GOLDFLAGS ?= -s -w
+LDFLAGS := -ldflags "${GOLDFLAGS} -X ${FLAG_VERSION} -X ${FLAG_BUILD_TIME} -X ${FLAG_GIT_COMMIT}"
+
+CRD_OPTIONS ?= "crd:generateEmbeddedObjectMeta=true"
+KUBEBUILDER_VERSION ?= 2.3.1
+GOOS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
+GOARCH ?= amd64
+# Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
+ifeq (,$(shell go env GOBIN))
+GOBIN=$(shell go env GOPATH)/bin
+else
+GOBIN=$(shell go env GOBIN)
+endif
+
+export KUBEBUILDER_ASSETS ?= $(GOBIN)
+export ACK_GINKGO_DEPRECATIONS ?= 1.16.4
+
+fmt:
+	go fmt ./...
+
+vet:
+	go vet ./...
+
+bin: $(if $(QUICK),, fmt vet) service-hub
+
+service-hub:
+	GOOS=${GOOS} go build ${LDFLAGS}  -o ${OUTPUT_DIR}/$@ ./cmd/$@
+
+service-hub-image:
+	docker build -t fabedge/service-hub:latest -f build/service-hub/Dockerfile .
+
+fabdns:
+	GOOS=${GOOS} go build -ldflags="-X github.com/coredns/coredns/coremain.GitCommit=$(GIT_COMMIT)" -o ${OUTPUT_DIR}/$@ ./cmd/$@
+
+fabdns-image:
+	docker build -t fabedge/fabdns:latest -f build/fabdns/Dockerfile .
+
+.PHONY: test
+test:
+ifneq (,$(shell which ginkgo))
+	ginkgo ./pkg/...
+else
+	go test ./pkg/...
+endif
+
+e2e-test:
+	go test ${LDFLAGS} -c ./test/e2e -o ${OUTPUT_DIR}/fabdns-e2e.test
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
@@ -17,7 +72,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	go get sigs.k8s.io/controller-tools/cmd/controller-gen@v0.2.5 ;\
+	go get sigs.k8s.io/controller-tools/cmd/controller-gen@v0.7.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(GOBIN)/controller-gen

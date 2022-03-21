@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-hub
+  namespace: fabedge
+  labels:
+    app: service-hub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-hub
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: service-hub
+    spec:
+      containers:
+        - name: service-hub
+          image: fabedge/service-hub
+          imagePullPolicy: IfNotPresent
+          args:
+            - --mode=server
+            - --cluster=fabedge
+            - --zone=haidian
+            - --region=beijing
+            - --tls-key-file=/etc/fabedge/tls.key
+            - --tls-cert-file=/etc/fabedge/tls.crt
+            - --tls-ca-cert-file=/etc/fabedge/ca.crt
+          ports:
+            - containerPort: 3000
+              name: apiserver
+            - containerPort: 3001
+              name: health
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/fabedge/
+          readinessProbe:
+            httpGet:
+              port: 3001
+              scheme: HTTP
+              path: "/readyz/ping"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              port: 3001
+              scheme: HTTP
+              path: "/readyz/ping"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 3
+      serviceAccountName: fabedge-operator
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  # 根据选择的边缘系统来配置，避免把service-hub部署到边缘节点
+                  - key: node-role.kubernetes.io/edge
+                    operator: DoesNotExist
+      volumes:
+        - name: tls
+          secret:
+            items:
+                - key: tls.crt
+                  path: tls.crt
+                - key: tls.key
+                  path: tls.key
+                - key: ca.crt
+                  path: ca.crt
+            secretName: service-hub-tls

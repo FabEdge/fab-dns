@@ -1,0 +1,21 @@
+# 请参考docs/fabdns-guideline.md
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fabdns
+  namespace: fabedge
+data:
+  Corefile: |
+    .:53 {
+        errors
+        health
+        ready
+        fabdns global {
+           cluster fabedge
+           zone beijing
+           region north
+           ttl 30
+        }
+        cache 30
+        reload
+    }
