@@ -117,7 +117,7 @@ func (exporter serviceExporter) Reconcile(ctx context.Context, req reconcile.Req
 			Cluster:   exporter.ClusterName,
 			Zone:      exporter.Zone,
 			Region:    exporter.Region,
-			Addresses: []string{svc.Spec.ClusterIP},
+			Addresses: svc.Spec.ClusterIPs,
 		})
 	}
 

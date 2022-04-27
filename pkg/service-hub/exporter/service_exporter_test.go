@@ -2,6 +2,7 @@ package exporter
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -90,8 +91,11 @@ var _ = Describe("ServiceExporter", func() {
 	})
 
 	Context("A headless service", func() {
-		var svc corev1.Service
-		var endpointslice discoveryv1.EndpointSlice
+		var (
+			svc               corev1.Service
+			endpointSliceIPv4 discoveryv1.EndpointSlice
+			endpointSliceIPv6 discoveryv1.EndpointSlice
+		)
 
 		BeforeEach(func() {
 			hostname1 := "mysql-1"
@@ -116,7 +120,7 @@ var _ = Describe("ServiceExporter", func() {
 					Ports:     []corev1.ServicePort{port},
 				},
 			}
-			endpointslice = discoveryv1.EndpointSlice{
+			endpointSliceIPv4 = discoveryv1.EndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "mysql-123456",
 					Namespace: "default",
@@ -162,6 +166,53 @@ var _ = Describe("ServiceExporter", func() {
 					},
 				},
 			}
+
+			endpointSliceIPv6 = discoveryv1.EndpointSlice{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "mysql-23456",
+					Namespace: "default",
+					Labels: map[string]string{
+						"kubernetes.io/service-name": "mysql",
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "v1",
+							Kind:       "Service",
+							Name:       svc.Name,
+							UID:        "23456",
+							Controller: &managedByController,
+						},
+					},
+				},
+				AddressType: discoveryv1.AddressTypeIPv6,
+				Ports: []discoveryv1.EndpointPort{
+					{
+						Name:     &port.Name,
+						Port:     &port.Port,
+						Protocol: &port.Protocol,
+					},
+				},
+				Endpoints: []discoveryv1.Endpoint{
+					{
+						Addresses: []string{"2003::f816:3eff:fe21:1"},
+						Hostname:  &hostname1,
+						TargetRef: &corev1.ObjectReference{
+							Kind:      "Pod",
+							Name:      hostname1,
+							Namespace: "default",
+						},
+					},
+					{
+						Addresses: []string{"2003::f816:3eff:fe21:2"},
+						Hostname:  &hostname2,
+						TargetRef: &corev1.ObjectReference{
+							Kind:      "Pod",
+							Name:      hostname2,
+							Namespace: "default",
+						},
+					},
+				},
+			}
 		})
 
 		When("it is marked as global-service", func() {
@@ -169,12 +220,15 @@ var _ = Describe("ServiceExporter", func() {
 				td.createObject(&svc)
 				td.expectExporterReconcile(&svc)
 
-				td.createObject(&endpointslice)
+				td.createObject(&endpointSliceIPv4)
+				td.expectExporterReconcile(&svc)
+
+				td.createObject(&endpointSliceIPv6)
 				td.expectExporterReconcile(&svc)
 			})
 
 			It("will export this service as global services", func() {
-				td.expectServiceExported(&svc, &endpointslice)
+				td.expectServiceExported(&svc, []discoveryv1.EndpointSlice{endpointSliceIPv4, endpointSliceIPv6})
 			})
 
 			When("the global-service marker is removed", func() {
@@ -325,7 +379,7 @@ func (td *testDriver) expectRevokerReconcile(obj client.Object) {
 	})))
 }
 
-func (td *testDriver) expectServiceExported(svc *corev1.Service, endpointslice *discoveryv1.EndpointSlice) {
+func (td *testDriver) expectServiceExported(svc *corev1.Service, endpointSlices []discoveryv1.EndpointSlice) {
 	exportedService := td.exportedGlobalService
 	Expect(exportedService.ClusterName).To(Equal(td.cluster))
 	Expect(len(exportedService.Spec.Ports)).To(Equal(len(svc.Spec.Ports)))
@@ -344,29 +398,48 @@ func (td *testDriver) expectServiceExported(svc *corev1.Service, endpointslice *
 		Expect(p1.AppProtocol).To(Equal(p2.AppProtocol))
 	}
 
-	if endpointslice == nil {
+	if endpointSlices == nil {
 		Expect(exportedService.Spec.Type).To(Equal(apis.ClusterIP))
 		Expect(len(exportedService.Spec.Endpoints)).To(Equal(1))
 		Expect(exportedService.Spec.Endpoints[0]).To(Equal(apis.Endpoint{
 			Cluster:   td.cluster,
 			Zone:      td.zone,
 			Region:    td.region,
-			Addresses: []string{svc.Spec.ClusterIP},
+			Addresses: svc.Spec.ClusterIPs,
 		}))
 	} else {
 		Expect(exportedService.Spec.Type).To(Equal(apis.Headless))
-		Expect(len(exportedService.Spec.Endpoints)).To(Equal(len(endpointslice.Endpoints)))
-		for i := range exportedService.Spec.Endpoints {
-			ep1 := exportedService.Spec.Endpoints[i]
-			ep2 := endpointslice.Endpoints[i]
 
-			Expect(ep1.Cluster).To(Equal(td.cluster))
-			Expect(ep1.Zone).To(Equal(td.zone))
-			Expect(ep1.Region).To(Equal(td.region))
-			Expect(ep1.Addresses).To(Equal(ep2.Addresses))
-			Expect(ep1.Hostname).To(Equal(ep2.Hostname))
-			Expect(ep1.TargetRef).To(Equal(ep2.TargetRef))
+		endpoints := make([]discoveryv1.Endpoint, 0)
+		for _, endpendpointSlice := range endpointSlices {
+			endpoints = append(endpoints, endpendpointSlice.Endpoints...)
 		}
+		Expect(len(exportedService.Spec.Endpoints)).To(Equal(len(endpoints)))
+
+		td.expectExportedServiceIsAccurate(endpoints, exportedService)
+	}
+}
+
+func (td *testDriver) expectExportedServiceIsAccurate(endpoints []discoveryv1.Endpoint, exportedService *apis.GlobalService) {
+	for _, ep1 := range endpoints {
+		matched := false
+
+		for _, ep2 := range exportedService.Spec.Endpoints {
+			if !reflect.DeepEqual(ep1.Addresses, ep2.Addresses) {
+				continue
+			}
+
+			matched = true
+
+			Expect(ep2.Cluster).To(Equal(td.cluster))
+			Expect(ep2.Zone).To(Equal(td.zone))
+			Expect(ep2.Region).To(Equal(td.region))
+
+			Expect(ep2.Hostname).To(Equal(ep1.Hostname))
+			Expect(ep2.TargetRef).To(Equal(ep1.TargetRef))
+		}
+
+		Expect(matched).To(BeTrue())
 	}
 }
 
