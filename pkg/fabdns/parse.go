@@ -1,8 +1,6 @@
 package fabdns
 
 import (
-	"github.com/coredns/coredns/plugin/pkg/dnsutil"
-
 	"github.com/miekg/dns"
 )
 
@@ -15,67 +13,42 @@ type recordRequest struct {
 	service string
 	// The namespace used in Kubernetes.
 	namespace string
-	// A each name can be for a pod or a service, here we track what we've seen, either "pod" or "service".
-	podOrSvc string
+	// query svc in a specified cluster or not
+	isAdHoc bool
 }
 
-// parseRequest parses the qname to find all the elements we need for querying global service.
-func parseRequest(name, zone string) (r recordRequest, err error) {
-	// 2 Possible cases:
-	// 1. (ClusterIP): service.namespace.svc.zone
-	// 2. (headless endpoint): hostname.cluster.service.namespace.svc.zone
+func parseRequest(name string) (r recordRequest, err error) {
+	// support the following formats:
+	// {service}.{namespace}.svc.global
+	// {hostname}.{cluster}.{service}.{namespace}.svc.global
+	// {service}.{namespace}.{cluster}.global
 
-	base, _ := dnsutil.TrimZone(name, zone)
-	// return NODATA for apex queries
-	if base == "" || base == Svc || base == Pod {
-		if base == Pod {
-			return r, errInvalidRequest
-		}
-		return r, nil
-	}
-	segs := dns.SplitDomainName(base)
-
-	// start at the right and fill out recordRequest with the bits we find, so we look for
-	// svc.namespace.service and then hostname.cluster
-
-	last := len(segs) - 1
-	if last < 0 {
-		return r, nil
-	}
-	r.podOrSvc = segs[last]
-	if r.podOrSvc != Svc {
+	labels := dns.SplitDomainName(name)
+	if len(labels) != 4 && len(labels) != 6 {
 		return r, errInvalidRequest
 	}
-	last--
-	if last < 0 {
-		return r, nil
-	}
 
-	r.namespace = segs[last]
-	last--
-	if last < 0 {
-		return r, nil
-	}
-
-	r.service = segs[last]
-	last--
-	if last < 0 {
-		return r, nil
-	}
-
-	r.cluster = segs[last]
-	last--
-	if last < 0 {
-		return r, nil
-	}
-
-	r.hostname = segs[last]
-	last--
-	if last < 0 {
-		return r, nil
-	}
-
-	if last != 1 { // unrecognized labels remaining
+	switch {
+	case len(labels) == 6:
+		// hostname.cluster.service.namespace.svc.global
+		r.hostname = labels[0]
+		r.cluster = labels[1]
+		r.service = labels[2]
+		r.namespace = labels[3]
+		r.isAdHoc = false
+	case len(labels) == 4 && labels[2] == LabelSVC:
+		// e.g. web.default.svc.global
+		// If you name your cluster as "svc", it is your problem.
+		r.service = labels[0]
+		r.namespace = labels[1]
+		r.isAdHoc = false
+	case len(labels) == 4:
+		// e.g. web.default.root.global
+		r.service = labels[0]
+		r.namespace = labels[1]
+		r.cluster = labels[2]
+		r.isAdHoc = true
+	default:
 		return r, errInvalidRequest
 	}
 
@@ -89,6 +62,5 @@ func (r recordRequest) String() string {
 	s += "." + r.cluster
 	s += "." + r.service
 	s += "." + r.namespace
-	s += "." + r.podOrSvc
 	return s
 }

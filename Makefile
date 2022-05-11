@@ -82,4 +82,4 @@ endif
 
 install-test-dependencies:
 	curl -sL https://github.com/kubernetes-sigs/kubebuilder/releases/download/v$(KUBEBUILDER_VERSION)/kubebuilder_$(KUBEBUILDER_VERSION)_$(GOOS)_$(GOARCH).tar.gz | \
-                    tar -zx -C ${GOBIN} --strip-components=2
+                    tar -zx -C /usr/local/kubebuilder/bin/  --strip-components=2
