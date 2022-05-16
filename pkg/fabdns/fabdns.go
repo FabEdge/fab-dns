@@ -18,11 +18,8 @@ import (
 )
 
 const (
-	// Svc is the DNS schema for global services
-	Svc = "svc"
-	// Pod is the DNS schema for kubernetes pods
-	Pod        = "pod"
 	defaultTTL = 5
+	LabelSVC   = "svc"
 )
 
 var (
@@ -76,18 +73,22 @@ func (f FabDNS) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) 
 		err       error
 	)
 
-	parsedReq, err = parseRequest(qname, zone)
+	parsedReq, err = parseRequest(qname)
 	if err != nil {
-		log.Debugf("parse request err: %v", err)
-		return f.nextOrFailure(&state, ctx, w, r, dns.RcodeNameError, err)
+		return dns.RcodeNameError, err
 	}
 
-	records, err = f.getRecords(&state, parsedReq)
-	if f.IsNameError(err) {
-		log.Debugf("get records err: %v", err)
-		return f.nextOrFailure(&state, ctx, w, r, dns.RcodeNameError, err)
+	if parsedReq.isAdHoc {
+		records, err = f.getAdHocRecords(&state, parsedReq)
+	} else {
+		records, err = f.getGlobalRecords(&state, parsedReq)
 	}
+
 	if err != nil {
+		if f.IsNameError(err) {
+			log.Debugf("get records err: %v", err)
+			return f.nextOrFailure(&state, ctx, w, r, dns.RcodeNameError, err)
+		}
 		return dns.RcodeServerFailure, plugin.Error(f.Name(), err)
 	}
 
@@ -104,7 +105,7 @@ func (f FabDNS) IsNameError(err error) bool {
 	return err == errNoItems || err == errInvalidRequest
 }
 
-func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]dns.RR, error) {
+func (f *FabDNS) getGlobalRecords(state *request.Request, parsedReq recordRequest) ([]dns.RR, error) {
 	namespace, service, clustername, hostname := parsedReq.namespace, parsedReq.service, parsedReq.cluster, parsedReq.hostname
 
 	if len(namespace) == 0 || len(service) == 0 {
@@ -190,6 +191,34 @@ func (f *FabDNS) getRecords(state *request.Request, parsedReq recordRequest) ([]
 		}
 		return allRecords, nil
 	}
+}
+
+func (f *FabDNS) getAdHocRecords(state *request.Request, parsedReq recordRequest) ([]dns.RR, error) {
+	var (
+		globalService apis.GlobalService
+		serviceKey    = client.ObjectKey{
+			Namespace: parsedReq.namespace,
+			Name:      parsedReq.service,
+		}
+	)
+
+	err := f.Client.Get(context.TODO(), serviceKey, &globalService)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil, errNoItems
+		}
+		log.Errorf("failed to find GlobalService err: %v, query name is %s", err, state.Name())
+		return nil, err
+	}
+
+	var clusterMatchedRecords []dns.RR
+	for _, endpoint := range globalService.Spec.Endpoints {
+		if endpoint.Cluster == parsedReq.cluster {
+			clusterMatchedRecords = append(clusterMatchedRecords, f.generateRecords(state, endpoint)...)
+		}
+	}
+
+	return clusterMatchedRecords, nil
 }
 
 func (f FabDNS) writeMsg(state *request.Request, records []dns.RR, rcode int, err error) (int, error) {
