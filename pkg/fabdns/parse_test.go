@@ -13,43 +13,86 @@ var _ = Describe("Parse", func() {
 func testValidRequests() {
 
 	type testExpected struct {
-		qname    string
-		expected string
+		qname string
+		rr    recordRequest
 	}
 
 	When("ClusterIP svc request", func() {
 		It("should be no error", func() {
-			test := testExpected{"myservice.mynamespace.svc." + testZone, "..myservice.mynamespace.svc"}
-			req, err := parseRequest(test.qname, testZone)
+			test := testExpected{"myservice.mynamespace.svc." + testZone,
+				recordRequest{
+					service:   "myservice",
+					namespace: "mynamespace",
+					cluster:   "",
+					isAdHoc:   false,
+					hostname:  "",
+				},
+			}
+			req, err := parseRequest(test.qname)
 			Expect(err).To(BeNil())
-			Expect(req.String()).To(Equal(test.expected))
+			Expect(req).To(Equal(test.rr))
 		})
 	})
 
 	When("Headless svc request", func() {
 		It("should be no error", func() {
-			test := testExpected{"hostname.mycluster.myservice.mynamespace.svc." + testZone, "hostname.mycluster.myservice.mynamespace.svc"}
-			req, err := parseRequest(test.qname, testZone)
+			test := testExpected{"hostname.mycluster.myservice.mynamespace.svc." + testZone,
+				recordRequest{
+					service:   "myservice",
+					namespace: "mynamespace",
+					cluster:   "mycluster",
+					isAdHoc:   false,
+					hostname:  "hostname",
+				},
+			}
+
+			req, err := parseRequest(test.qname)
 			Expect(err).To(BeNil())
-			Expect(req.String()).To(Equal(test.expected))
+			Expect(req).To(Equal(test.rr))
+		})
+	})
+
+	When("ad-hoc clusterIP svc request", func() {
+		It("should no error", func() {
+			test := testExpected{"myservice.mynamespace.mycluster." + testZone,
+				recordRequest{
+					service:   "myservice",
+					namespace: "mynamespace",
+					cluster:   "mycluster",
+					isAdHoc:   true,
+					hostname:  "",
+				},
+			}
+
+			req, err := parseRequest(test.qname)
+			Expect(err).To(BeNil())
+			Expect(req).To(Equal(test.rr))
 		})
 	})
 }
 
 func testInvalidRequests() {
 
-	When("SVC request too lang", func() {
+	When("request too long", func() {
 		It("should be error", func() {
 			qname := "too.lang.request.myservice.mynamespace.svc." + testZone
-			_, err := parseRequest(qname, testZone)
+			_, err := parseRequest(qname)
 			Expect(err).Should(HaveOccurred())
 		})
 	})
 
-	When("request not for svc", func() {
+	When("request too short", func() {
 		It("should be error", func() {
-			qname := "myservice.mynamespace.pod." + testZone
-			_, err := parseRequest(qname, testZone)
+			qname := "mynamespace.svc." + testZone
+			_, err := parseRequest(qname)
+			Expect(err).Should(HaveOccurred())
+		})
+	})
+
+	When("request too short", func() {
+		It("should be error", func() {
+			qname := "svc." + testZone
+			_, err := parseRequest(qname)
 			Expect(err).Should(HaveOccurred())
 		})
 	})
