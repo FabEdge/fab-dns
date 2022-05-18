@@ -218,11 +218,7 @@ func (f *FabDNS) getAdHocRecords(state *request.Request, parsedReq recordRequest
 		}
 	}
 
-	if len(clusterMatchedRecords) > 0 {
-		return clusterMatchedRecords, nil
-	}
-
-	return nil, errNoItems
+	return clusterMatchedRecords, nil
 }
 
 func (f FabDNS) writeMsg(state *request.Request, records []dns.RR, rcode int, err error) (int, error) {
