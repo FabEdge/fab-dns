@@ -2,6 +2,7 @@ package exporter
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -42,6 +43,7 @@ var _ = Describe("ServiceExporter", func() {
 					},
 				},
 				Spec: corev1.ServiceSpec{
+					IPFamilies: []corev1.IPFamily{corev1.IPv4Protocol, corev1.IPv6Protocol},
 					Ports: []corev1.ServicePort{
 						{
 							Name:     "default",
@@ -65,7 +67,14 @@ var _ = Describe("ServiceExporter", func() {
 			})
 
 			It("will export this service as global service", func() {
-				td.expectServiceExported(&svc, nil)
+				td.expectServiceExported(&svc, apis.ClusterIP, []apis.Endpoint{
+					{
+						Addresses: svc.Spec.ClusterIPs,
+						Cluster:   td.cluster,
+						Zone:      td.zone,
+						Region:    td.region,
+					},
+				})
 			})
 
 			When("this service's global-service marker is removed", func() {
@@ -90,8 +99,11 @@ var _ = Describe("ServiceExporter", func() {
 	})
 
 	Context("A headless service", func() {
-		var svc corev1.Service
-		var endpointslice discoveryv1.EndpointSlice
+		var (
+			svc            corev1.Service
+			endpointslice4 discoveryv1.EndpointSlice
+			endpointslice6 discoveryv1.EndpointSlice
+		)
 
 		BeforeEach(func() {
 			hostname1 := "mysql-1"
@@ -116,7 +128,7 @@ var _ = Describe("ServiceExporter", func() {
 					Ports:     []corev1.ServicePort{port},
 				},
 			}
-			endpointslice = discoveryv1.EndpointSlice{
+			endpointslice4 = discoveryv1.EndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "mysql-123456",
 					Namespace: "default",
@@ -162,6 +174,53 @@ var _ = Describe("ServiceExporter", func() {
 					},
 				},
 			}
+
+			endpointslice6 = discoveryv1.EndpointSlice{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "mysql-abcde",
+					Namespace: "default",
+					Labels: map[string]string{
+						"kubernetes.io/service-name": "mysql",
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "v1",
+							Kind:       "Service",
+							Name:       svc.Name,
+							UID:        "123456",
+							Controller: &managedByController,
+						},
+					},
+				},
+				AddressType: discoveryv1.AddressTypeIPv6,
+				Ports: []discoveryv1.EndpointPort{
+					{
+						Name:     &port.Name,
+						Port:     &port.Port,
+						Protocol: &port.Protocol,
+					},
+				},
+				Endpoints: []discoveryv1.Endpoint{
+					{
+						Addresses: []string{"fd85:ee78:d8a6:8607::1:1"},
+						Hostname:  &hostname1,
+						TargetRef: &corev1.ObjectReference{
+							Kind:      "Pod",
+							Name:      hostname1,
+							Namespace: "default",
+						},
+					},
+					{
+						Addresses: []string{"fd85:ee78:d8a6:8607::1:2"},
+						Hostname:  &hostname2,
+						TargetRef: &corev1.ObjectReference{
+							Kind:      "Pod",
+							Name:      hostname2,
+							Namespace: "default",
+						},
+					},
+				},
+			}
 		})
 
 		When("it is marked as global-service", func() {
@@ -169,12 +228,26 @@ var _ = Describe("ServiceExporter", func() {
 				td.createObject(&svc)
 				td.expectExporterReconcile(&svc)
 
-				td.createObject(&endpointslice)
+				td.createObject(&endpointslice4)
+				td.expectExporterReconcile(&svc)
+
+				td.createObject(&endpointslice6)
 				td.expectExporterReconcile(&svc)
 			})
 
 			It("will export this service as global services", func() {
-				td.expectServiceExported(&svc, &endpointslice)
+				var expectedEndpoints []apis.Endpoint
+				for i, endpoint := range endpointslice4.Endpoints {
+					expectedEndpoints = append(expectedEndpoints, apis.Endpoint{
+						Addresses: append(endpoint.Addresses, endpointslice6.Endpoints[i].Addresses...),
+						Hostname:  endpoint.Hostname,
+						TargetRef: endpoint.TargetRef,
+						Cluster:   td.cluster,
+						Zone:      td.zone,
+						Region:    td.region,
+					})
+				}
+				td.expectServiceExported(&svc, apis.Headless, expectedEndpoints)
 			})
 
 			When("the global-service marker is removed", func() {
@@ -281,12 +354,12 @@ func (td *testDriver) GetService(key client.ObjectKey) (svc corev1.Service) {
 	return svc
 }
 
-func (td *testDriver) exportGlobalService(svc apis.GlobalService) error {
+func (td *testDriver) exportGlobalService(ctx context.Context, svc apis.GlobalService) error {
 	td.exportedGlobalService = &svc
 	return nil
 }
 
-func (td *testDriver) revokeGlobalService(clusterName, namespace, name string) error {
+func (td *testDriver) revokeGlobalService(ctx context.Context, clusterName, namespace, name string) error {
 	Expect(clusterName).To(Equal(td.cluster))
 	gs := td.exportedGlobalService
 	if gs == nil {
@@ -325,7 +398,33 @@ func (td *testDriver) expectRevokerReconcile(obj client.Object) {
 	})))
 }
 
-func (td *testDriver) expectServiceExported(svc *corev1.Service, endpointslice *discoveryv1.EndpointSlice) {
+func (td *testDriver) expectServiceExported(svc *corev1.Service, svcType apis.ServiceType, expectedEndpoints []apis.Endpoint) {
+	exportedService := td.exportedGlobalService
+	Expect(exportedService.ClusterName).To(Equal(td.cluster))
+	Expect(exportedService.Spec.Type).To(Equal(svcType))
+	Expect(len(exportedService.Spec.Ports)).To(Equal(len(svc.Spec.Ports)))
+	Expect(td.exporter.serviceKeySet.Has(client.ObjectKey{
+		Name:      svc.Name,
+		Namespace: svc.Namespace,
+	})).To(BeTrue())
+
+	for i := range exportedService.Spec.Ports {
+		p1 := exportedService.Spec.Ports[i]
+		p2 := &svc.Spec.Ports[i]
+
+		Expect(p1.Port).To(Equal(p2.Port))
+		Expect(p1.Name).To(Equal(p2.Name))
+		Expect(p1.Protocol).To(Equal(p2.Protocol))
+		Expect(p1.AppProtocol).To(Equal(p2.AppProtocol))
+	}
+
+	Expect(len(exportedService.Spec.Endpoints)).To(Equal(len(expectedEndpoints)))
+	for i, eep := range expectedEndpoints {
+		Expect(exportedService.Spec.Endpoints[i]).To(Equal(eep))
+	}
+}
+
+func (td *testDriver) expectServiceExported2(svc *corev1.Service, endpointslice *discoveryv1.EndpointSlice) {
 	exportedService := td.exportedGlobalService
 	Expect(exportedService.ClusterName).To(Equal(td.cluster))
 	Expect(len(exportedService.Spec.Ports)).To(Equal(len(svc.Spec.Ports)))
@@ -351,13 +450,34 @@ func (td *testDriver) expectServiceExported(svc *corev1.Service, endpointslice *
 			Cluster:   td.cluster,
 			Zone:      td.zone,
 			Region:    td.region,
-			Addresses: []string{svc.Spec.ClusterIP},
+			Addresses: svc.Spec.ClusterIPs,
 		}))
 	} else {
 		Expect(exportedService.Spec.Type).To(Equal(apis.Headless))
-		Expect(len(exportedService.Spec.Endpoints)).To(Equal(len(endpointslice.Endpoints)))
-		for i := range exportedService.Spec.Endpoints {
-			ep1 := exportedService.Spec.Endpoints[i]
+		var exportedEndpoints []apis.Endpoint
+
+		checkIP := isIPv4String
+		if endpointslice.AddressType == discoveryv1.AddressTypeIPv6 {
+			checkIP = isIPv6String
+		}
+		for _, endpoint := range exportedService.Spec.Endpoints {
+
+			var address []string
+			for _, addr := range endpoint.Addresses {
+				if checkIP(addr) {
+					address = append(address, addr)
+				}
+			}
+			endpoint.Addresses = address
+
+			if len(endpoint.Addresses) != 0 {
+				exportedEndpoints = append(exportedEndpoints, endpoint)
+			}
+		}
+
+		Expect(len(exportedEndpoints)).To(Equal(len(endpointslice.Endpoints)))
+		for i := range exportedEndpoints {
+			ep1 := exportedEndpoints[i]
 			ep2 := endpointslice.Endpoints[i]
 
 			Expect(ep1.Cluster).To(Equal(td.cluster))
@@ -376,4 +496,12 @@ func (td *testDriver) expectServiceNotExported(svc *corev1.Service) {
 		Name:      svc.Name,
 		Namespace: svc.Namespace,
 	})).To(BeFalse())
+}
+
+func isIPv6String(ip string) bool {
+	return strings.Contains(ip, ":")
+}
+
+func isIPv4String(ip string) bool {
+	return !isIPv6String(ip)
 }

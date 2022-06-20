@@ -26,11 +26,14 @@ var _ = Describe("ClusterCleaner", func() {
 		store = types.NewClusterStore()
 		serviceManager = types.NewGlobalServiceManager(k8sClient, true)
 		cleaner = &clusterCleaner{
-			client:              k8sClient,
-			interval:            time.Second,
-			log:                 ctrlpkg.Log,
-			store:               store,
-			revokeGlobalService: serviceManager.RevokeGlobalService,
+			client: k8sClient,
+			Config: Config{
+				Interval:            time.Second,
+				RequestTimeout:      time.Second,
+				Store:               store,
+				RevokeGlobalService: serviceManager.RevokeGlobalService,
+			},
+			log: ctrlpkg.Log,
 		}
 	})
 
@@ -78,7 +81,7 @@ var _ = Describe("ClusterCleaner", func() {
 				Namespace: globalService.Namespace,
 			}
 
-			Expect(serviceManager.CreateOrMergeGlobalService(globalService)).To(Succeed())
+			Expect(serviceManager.CreateOrMergeGlobalService(context.Background(), globalService)).To(Succeed())
 			cluster.AddServiceKey(serviceKey)
 		})
 

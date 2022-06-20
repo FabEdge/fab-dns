@@ -1,6 +1,8 @@
 package exporter
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -26,7 +28,8 @@ var _ = Describe("LostServiceRevoker", func() {
 					Namespace: "default",
 				},
 				Spec: corev1.ServiceSpec{
-					ClusterIP: "10.0.0.254",
+					ClusterIP:  "10.233.46.189",
+					ClusterIPs: []string{"10.233.46.189", "fd85:ee78:d8a6:8607::14c0"},
 					Ports: []corev1.ServicePort{
 						{
 							Port:     80,
@@ -59,7 +62,7 @@ var _ = Describe("LostServiceRevoker", func() {
 
 		JustBeforeEach(func() {
 			// we need a fake exported global service for later expects
-			_ = td.exportGlobalService(globalService)
+			_ = td.exportGlobalService(context.Background(), globalService)
 
 			td.createObject(&globalService)
 			td.expectRevokerReconcile(&globalService)
@@ -76,7 +79,7 @@ var _ = Describe("LostServiceRevoker", func() {
 						Cluster:   td.cluster,
 						Zone:      td.zone,
 						Region:    td.region,
-						Addresses: []string{service.Spec.ClusterIP},
+						Addresses: service.Spec.ClusterIPs,
 					})
 			})
 

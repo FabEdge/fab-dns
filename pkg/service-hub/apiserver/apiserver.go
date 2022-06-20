@@ -32,6 +32,7 @@ type Config struct {
 	ClusterStore          *types.ClusterStore
 	GlobalServiceManager  types.GlobalServiceManager
 	ClusterExpireDuration time.Duration
+	RequestTimeout        time.Duration
 }
 
 func New(cfg Config) (*http.Server, error) {
@@ -61,7 +62,7 @@ func (s *Server) Heartbeat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GetAllGlobalServices(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), s.RequestTimeout)
 	defer cancel()
 
 	var globalServices apis.GlobalServiceList
@@ -111,14 +112,17 @@ func (s *Server) UploadGlobalService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer func() {
-		cluster := s.ClusterStore.New(s.getCluster(r))
+		cluster := s.ClusterStore.New(s.getClusterName(r))
 		cluster.AddServiceKey(client.ObjectKey{
 			Name:      gs.Name,
 			Namespace: gs.Namespace,
 		})
 	}()
 
-	if err = s.GlobalServiceManager.CreateOrMergeGlobalService(gs); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), s.RequestTimeout)
+	defer cancel()
+
+	if err = s.GlobalServiceManager.CreateOrMergeGlobalService(ctx, gs); err != nil {
 		s.response(w, http.StatusInternalServerError, err.Error())
 		return
 	} else {
@@ -129,9 +133,12 @@ func (s *Server) UploadGlobalService(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deleteEndpoints(w http.ResponseWriter, r *http.Request) {
 	serviceName := chi.URLParam(r, "name")
 	namespace := chi.URLParam(r, "namespaceDefault")
-	clusterName := s.getCluster(r)
+	clusterName := s.getClusterName(r)
 
-	err := s.GlobalServiceManager.RevokeGlobalService(clusterName, namespace, serviceName)
+	ctx, cancel := context.WithTimeout(context.Background(), s.RequestTimeout)
+	defer cancel()
+
+	err := s.GlobalServiceManager.RevokeGlobalService(ctx, clusterName, namespace, serviceName)
 	if err != nil {
 		s.response(w, http.StatusInternalServerError, fmt.Sprintf("failed to find global service: %s", err))
 	} else {
@@ -157,7 +164,7 @@ func (s *Server) response(w http.ResponseWriter, statusCode int, msg string) {
 
 func (s *Server) updateClusterExpireTime(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
-		clusterName := s.getCluster(r)
+		clusterName := s.getClusterName(r)
 		if clusterName == "" {
 			next.ServeHTTP(w, r)
 			return
@@ -172,18 +179,6 @@ func (s *Server) updateClusterExpireTime(next http.Handler) http.Handler {
 	return http.HandlerFunc(fn)
 }
 
-func (s *Server) getCluster(r *http.Request) string {
+func (s *Server) getClusterName(r *http.Request) string {
 	return r.Header.Get(HeaderClusterName)
-}
-
-func removeEndpoints(endpoints []apis.Endpoint, cluster string) []apis.Endpoint {
-	for i := 0; i < len(endpoints); {
-		if endpoints[i].Cluster == cluster {
-			endpoints = append(endpoints[:i], endpoints[i+1:]...)
-			continue
-		}
-		i++
-	}
-
-	return endpoints
 }

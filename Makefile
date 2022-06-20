@@ -1,6 +1,6 @@
 OUTPUT_DIR ?= _output
 
-VERSION := v0.1.0.alpha
+VERSION := $(shell git describe --tags)
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
 META := github.com/fabedge/fab-dns/pkg/about
@@ -11,7 +11,7 @@ GOLDFLAGS ?= -s -w
 LDFLAGS := -ldflags "${GOLDFLAGS} -X ${FLAG_VERSION} -X ${FLAG_BUILD_TIME} -X ${FLAG_GIT_COMMIT}"
 
 CRD_OPTIONS ?= "crd:generateEmbeddedObjectMeta=true"
-KUBEBUILDER_VERSION ?= 2.3.1
+K8S_VERSION=1.21.2
 GOOS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
 GOARCH ?= amd64
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
@@ -32,17 +32,20 @@ vet:
 
 bin: $(if $(QUICK),, fmt vet) service-hub
 
+buildx-install:
+	docker buildx install > /dev/null 2>&1 || true
+
 service-hub:
 	GOOS=${GOOS} go build ${LDFLAGS}  -o ${OUTPUT_DIR}/$@ ./cmd/$@
 
-service-hub-image:
-	docker build -t fabedge/service-hub:latest -f build/service-hub/Dockerfile .
+service-hub-image: buildx-install
+	docker build -t fabedge/service-hub:${VERSION} $(if $(PLATFORM),--platform $(PLATFORM)) $(if $(PUSH),--push) -f build/service-hub/Dockerfile .
 
 fabdns:
 	GOOS=${GOOS} go build -ldflags="-X github.com/coredns/coredns/coremain.GitCommit=$(GIT_COMMIT)" -o ${OUTPUT_DIR}/$@ ./cmd/$@
 
-fabdns-image:
-	docker build -t fabedge/fabdns:latest -f build/fabdns/Dockerfile .
+fabdns-image: buildx-install
+	docker build -t fabedge/fabdns:{VERSION} $(if $(PLATFORM),--platform $(PLATFORM)) $(if $(PUSH),--push) -f build/fabdns/Dockerfile .
 
 .PHONY: test
 test:
@@ -80,6 +83,7 @@ else
 CONTROLLER_GEN=$(shell which controller-gen)
 endif
 
-install-test-dependencies:
-	curl -sL https://github.com/kubernetes-sigs/kubebuilder/releases/download/v$(KUBEBUILDER_VERSION)/kubebuilder_$(KUBEBUILDER_VERSION)_$(GOOS)_$(GOARCH).tar.gz | \
-                    tar -zx -C /usr/local/kubebuilder/bin/  --strip-components=2
+# https://book.kubebuilder.io/reference/envtest.html
+install-test-tools:
+	curl -sL "https://go.kubebuilder.io/test-tools/${K8S_VERSION}/${GOOS}/${GOARCH}" | \
+                    tar -zx -C ${GOBIN} --strip-components=2

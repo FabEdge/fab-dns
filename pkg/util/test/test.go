@@ -91,6 +91,10 @@ func StartTestEnvWithCRDAndScheme(CRDDirectoryPaths []string, scheme *runtime.Sc
 		CRDDirectoryPaths: CRDDirectoryPaths,
 	}
 
+	args := env.ControlPlane.GetAPIServer().Configure()
+	args.Set("feature-gates", "IPv6DualStack=true")
+	args.Set("service-cluster-ip-range", "10.233.0.0/18,fd85:ee78:d8a6:8607::1000/116")
+
 	cfg, err = env.Start()
 	if err != nil {
 		return

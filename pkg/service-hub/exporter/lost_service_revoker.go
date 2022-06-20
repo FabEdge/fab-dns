@@ -40,10 +40,10 @@ func addDiffCheckerToManager(mgr manager.Manager, reconciler reconcile.Reconcile
 		Complete(reconciler)
 }
 
-func (dc lostServiceRevoker) Reconcile(ctx context.Context, req reconcile.Request) (result reconcile.Result, err error) {
-	log := dc.log.WithValues("request", req)
+func (revoker lostServiceRevoker) Reconcile(ctx context.Context, req reconcile.Request) (result reconcile.Result, err error) {
+	log := revoker.log.WithValues("request", req)
 	var globalService apis.GlobalService
-	if err = dc.client.Get(ctx, req.NamespacedName, &globalService); err != nil {
+	if err = revoker.client.Get(ctx, req.NamespacedName, &globalService); err != nil {
 		if errors.IsNotFound(err) {
 			log.V(5).Info("global service is not found, skip it")
 			return result, nil
@@ -54,9 +54,9 @@ func (dc lostServiceRevoker) Reconcile(ctx context.Context, req reconcile.Reques
 	}
 
 	var service corev1.Service
-	if err = dc.client.Get(ctx, req.NamespacedName, &service); err != nil {
+	if err = revoker.client.Get(ctx, req.NamespacedName, &service); err != nil {
 		if errors.IsNotFound(err) {
-			return result, dc.revokeGlobalServiceIfNecessary(globalService)
+			return result, revoker.revokeGlobalServiceIfNecessary(ctx, globalService)
 		}
 
 		log.Error(err, "failed to get service")
@@ -65,19 +65,19 @@ func (dc lostServiceRevoker) Reconcile(ctx context.Context, req reconcile.Reques
 
 	if !isGlobalService(service.Labels) {
 		log.V(5).Info("service is not exported, try to revoke expired endpoints", "service", service)
-		return result, dc.revokeGlobalServiceIfNecessary(globalService)
+		return result, revoker.revokeGlobalServiceIfNecessary(ctx, globalService)
 	}
 
 	return result, nil
 }
 
-func (dc lostServiceRevoker) revokeGlobalServiceIfNecessary(globalService apis.GlobalService) error {
+func (revoker lostServiceRevoker) revokeGlobalServiceIfNecessary(ctx context.Context, globalService apis.GlobalService) error {
 	for _, endpoint := range globalService.Spec.Endpoints {
-		if endpoint.Cluster == dc.ClusterName {
-			dc.log.V(5).Info("this service has some expired endpoints, revoke them", "globalService", globalService)
-			err := dc.RevokeGlobalService(dc.ClusterName, globalService.Namespace, globalService.Name)
+		if endpoint.Cluster == revoker.ClusterName {
+			revoker.log.V(5).Info("this service has some expired endpoints, revoke them", "globalService", globalService)
+			err := revoker.RevokeGlobalService(ctx, revoker.ClusterName, globalService.Namespace, globalService.Name)
 			if err != nil {
-				dc.log.Error(err, "failed to revoke expired service", "globalService", globalService)
+				revoker.log.Error(err, "failed to revoke expired service", "globalService", globalService)
 			}
 		}
 	}

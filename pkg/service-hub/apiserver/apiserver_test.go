@@ -60,7 +60,7 @@ var _ = Describe("APIServer", func() {
 	When("receive a upload request for a exported service from a cluster", func() {
 		BeforeEach(func() {
 			resp := td.uploadGlobalService(td.serviceFromBeijing)
-			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			Expect(resp.Code).To(Equal(http.StatusNoContent), resp.Body.String())
 		})
 
 		It("will use GlobalServiceManager.CreateOrMergeGlobalService to process the service", func() {
@@ -161,6 +161,7 @@ func newTestDriver() *testDriver {
 		Client:                k8sClient,
 		ClusterStore:          clusterStore,
 		ClusterExpireDuration: 5 * time.Second,
+		RequestTimeout:        5 * time.Second,
 		GlobalServiceManager:  types.NewGlobalServiceManager(k8sClient, true),
 	})
 	Expect(err).Should(Succeed())

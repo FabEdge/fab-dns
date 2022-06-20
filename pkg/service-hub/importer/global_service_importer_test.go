@@ -32,6 +32,7 @@ var _ = Describe("GlobalServiceImporter", func() {
 		importer = &globalServiceImporter{
 			Config: Config{
 				Interval:             time.Second,
+				RequestTimeout:       5 * time.Second,
 				GetGlobalServices:    sourceServices.GetServices,
 				AllowCreateNamespace: allowCreateNameSpace,
 			},
@@ -47,25 +48,22 @@ var _ = Describe("GlobalServiceImporter", func() {
 	Describe("importServices", func() {
 		When("a local counterpart does not exist", func() {
 			var (
-				serviceToImport, serviceToDelete       apis.GlobalService
-				serviceKeyToImport, serviceKeyToDelete client.ObjectKey
+				serviceToImport, serviceToDelete apis.GlobalService
+				serviceKeyToDelete               client.ObjectKey
 			)
 
 			JustBeforeEach(func() {
-				serviceToImport, serviceKeyToImport = makeupGlobalServiceNginx(workNamespace)
+				serviceToImport, _ = makeupGlobalServiceNginx(workNamespace)
 				sourceServices.AddService(serviceToImport)
 
 				serviceToDelete, serviceKeyToDelete = makeupGlobalService("to-delete", workNamespace)
 				importer.createOrUpdateGlobalService(serviceToDelete)
+				expectGlobalServiceSaved(serviceToDelete)
 
 				importer.importServices()
 			})
 
 			It("will save global services", func() {
-				var localService apis.GlobalService
-				Eventually(func() error {
-					return k8sClient.Get(context.Background(), serviceKeyToImport, &localService)
-				}).Should(Succeed())
 				expectGlobalServiceSaved(serviceToImport)
 			})
 
@@ -183,7 +181,7 @@ func (gss *globalServices) Remove(service apis.GlobalService) {
 	delete(gss.services, key)
 }
 
-func (gss *globalServices) GetServices() ([]apis.GlobalService, error) {
+func (gss *globalServices) GetServices(ctx context.Context) ([]apis.GlobalService, error) {
 	gss.lock.Lock()
 	defer gss.lock.Unlock()
 
@@ -246,11 +244,11 @@ func changeServicePorts(svc *apis.GlobalService) {
 }
 
 func expectGlobalServiceSaved(expectedService apis.GlobalService) {
-	key := client.ObjectKey{
-		Name:      expectedService.Name,
-		Namespace: expectedService.Namespace,
-	}
-	savedService := testutil.ExpectGetGlobalService(k8sClient, key)
+	var savedService apis.GlobalService
+	Eventually(func() error {
+		return k8sClient.Get(context.Background(), keyFromObject(&expectedService), &savedService)
+	}, 5*time.Second).Should(Succeed())
+
 	Expect(savedService.Labels).To(HaveKeyWithValue(constants.KeyOriginResourceVersion, expectedService.ResourceVersion))
 	Expect(savedService.Spec).To(Equal(expectedService.Spec))
 }

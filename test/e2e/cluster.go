@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"path"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -23,39 +23,30 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/fabedge/fab-dns/pkg/apis/v1alpha1"
+	"github.com/fabedge/fab-dns/pkg/service-hub/exporter"
 	"github.com/fabedge/fab-dns/test/e2e/framework"
 )
 
 type Cluster struct {
-	name                    string
-	zone                    string
-	region                  string
-	config                  *rest.Config
-	client                  client.Client
-	clientset               kubernetes.Interface
-	podsReady               bool
-	nginxGlobalServiceReady bool
-	mysqlGlobalServiceReady bool
+	name          string
+	zone          string
+	region        string
+	config        *rest.Config
+	client        client.Client
+	clientset     kubernetes.Interface
+	podsReady     bool
+	servicesReady bool
 }
 
 func (c Cluster) ready() bool {
-	return c.podsReady && c.nginxGlobalServiceReady && c.mysqlGlobalServiceReady
+	return c.podsReady && c.servicesReady
 }
 
-func generateCluster(cfgDir, ip string) (cluster Cluster, err error) {
-	// path e.g. /tmp/e2ekubeconfig/10.20.8.20
-	cfg, err := clientcmd.BuildConfigFromFlags("", path.Join(cfgDir, ip))
+func generateCluster(kubeconfigPath string) (cluster Cluster, err error) {
+	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		return
 	}
-
-	// rewrite config host, e.g. "https://vip.edge.io:6443" => "https://10.20.8.20:6443"
-	segments := strings.Split(cfg.Host, ":")
-	if len(segments) < 2 {
-		return cluster, fmt.Errorf("cluster ip <%s> kubeconfig server %s can not rewrite to ip:port style", ip, cfg.Host)
-	}
-	segments[1] = fmt.Sprintf("//%s", ip)
-	cfg.Host = strings.Join(segments, ":")
 
 	cli, err := client.New(cfg, client.Options{})
 	if err != nil {
@@ -74,7 +65,7 @@ func generateCluster(cfgDir, ip string) (cluster Cluster, err error) {
 
 	// get cluster name,zone,region
 	args := []string{"--cluster=", "--zone=", "--region="}
-	args, err = cluster.getValuesFromDeploymentArguments("service-hub", "fabedge", args...)
+	args, err = cluster.getDeployArguments("service-hub", "fabedge", args...)
 	if err != nil {
 		return
 	}
@@ -103,7 +94,12 @@ func (c Cluster) prepareNamespace(namespace string) {
 	createObject(c.client, &ns)
 }
 
-func (c Cluster) prepareStatefulSet(name, namespace string, replicas int32) {
+func (c Cluster) prepareMySQLStatefulSet(namespace string) {
+	var (
+		name     = nameMySQL
+		replicas = int32(2)
+	)
+
 	statefulSet := v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -112,7 +108,7 @@ func (c Cluster) prepareStatefulSet(name, namespace string, replicas int32) {
 		Spec: v1.StatefulSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					labelKeyInstance: serviceNameMySQL,
+					labelKeyApp: name,
 				},
 			},
 			Replicas:    &replicas,
@@ -120,8 +116,7 @@ func (c Cluster) prepareStatefulSet(name, namespace string, replicas int32) {
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						labelKeyApp:      nameNetTool,
-						labelKeyInstance: serviceNameMySQL,
+						labelKeyApp: name,
 					},
 				},
 				Spec: podSpecWithAffinity(),
@@ -131,7 +126,11 @@ func (c Cluster) prepareStatefulSet(name, namespace string, replicas int32) {
 	createObject(c.client, &statefulSet)
 }
 
-func (c Cluster) prepareDeployment(name, namespace string, replicas int32) {
+func (c Cluster) prepareNginxDeployment(namespace string) {
+	var (
+		name     = nameNginx
+		replicas = int32(2)
+	)
 	deployment := v1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -140,15 +139,14 @@ func (c Cluster) prepareDeployment(name, namespace string, replicas int32) {
 		Spec: v1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					labelKeyInstance: serviceNameNginx,
+					labelKeyApp: name,
 				},
 			},
 			Replicas: &replicas,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						labelKeyApp:      nameNetTool,
-						labelKeyInstance: serviceNameNginx,
+						labelKeyApp: name,
 					},
 				},
 				Spec: podSpecWithAffinity(),
@@ -172,7 +170,7 @@ func (c Cluster) prepareDebugPod(name, namespace string) {
 	createObject(c.client, &debugPod)
 }
 
-func (c Cluster) prepareService(name, namespace string, isHeadless bool) {
+func (c Cluster) prepareService(name, namespace, appName string, isHeadless bool, ipFamilies []corev1.IPFamily) {
 	framework.Logf("create and export service %s/%s on %s", namespace, name, c.name)
 	svc := corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -186,8 +184,9 @@ func (c Cluster) prepareService(name, namespace string, isHeadless bool) {
 		Spec: corev1.ServiceSpec{
 			Type: corev1.ServiceTypeClusterIP,
 			Selector: map[string]string{
-				labelKeyInstance: name,
+				labelKeyApp: appName,
 			},
+			IPFamilies: ipFamilies,
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "default",
@@ -230,7 +229,7 @@ func (c *Cluster) waitForClusterPodsReady(wg *sync.WaitGroup, namespace string) 
 		}
 
 		// wait the pods to be ready, not only to be running, especially on slow environment
-		time.Sleep(15 * time.Second)
+		time.Sleep(5 * time.Second)
 
 		c.podsReady = true
 		return true, nil
@@ -243,36 +242,19 @@ func (c *Cluster) waitForClusterPodsReady(wg *sync.WaitGroup, namespace string) 
 
 func (c Cluster) generateGlobalServiceEndpoints(name, namespace string, serviceType apis.ServiceType) (endpoints []apis.Endpoint, err error) {
 	if serviceType == apis.Headless {
-		var headlessEps corev1.Endpoints
-		err = c.client.Get(context.TODO(),
-			client.ObjectKey{Name: name, Namespace: namespace},
-			&headlessEps)
-		if err != nil {
-			return
-		}
-
-		for _, subset := range headlessEps.Subsets {
-			for _, address := range subset.Addresses {
-				hostname := address.Hostname
-				ep := apis.Endpoint{
-					Hostname:  &hostname,
-					Addresses: []string{address.IP},
-					Cluster:   c.name,
-					Zone:      c.zone,
-					Region:    c.region,
-				}
-				endpoints = append(endpoints, ep)
-			}
-		}
-		return
+		return exporter.GetEndpointsOfHeadlessService(c.client, context.Background(), namespace, name, exporter.ClusterInfo{
+			Name:   c.name,
+			Zone:   c.zone,
+			Region: c.region,
+		})
 	}
 
-	clusterip, err := c.getServiceIP(name, namespace)
+	clusterIPs, err := c.getServiceIP(name, namespace)
 	if err != nil {
 		return nil, err
 	}
 	endpoints = append(endpoints, apis.Endpoint{
-		Addresses: []string{clusterip},
+		Addresses: clusterIPs,
 		Cluster:   c.name,
 		Zone:      c.zone,
 		Region:    c.region,
@@ -280,43 +262,85 @@ func (c Cluster) generateGlobalServiceEndpoints(name, namespace string, serviceT
 	return
 }
 
-func (c *Cluster) waitForGlobalServicesReady(wg *sync.WaitGroup, namespace string, expectedGlobalServices map[string]apis.GlobalService) {
+//func (c Cluster) getEndpointsOfHeadlessService(namespace, serviceName string) ([]apis.Endpoint, error) {
+//	var endpointSliceList discoveryv1.EndpointSliceList
+//	err := c.client.List(context.Background(), &endpointSliceList,
+//		client.InNamespace(namespace),
+//		client.MatchingLabels{
+//			"kubernetes.io/service-name": serviceName,
+//		},
+//	)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	var endpoints []apis.Endpoint
+//	endpointByName := make(map[string]*apis.Endpoint)
+//	for _, es := range endpointSliceList.Items {
+//		for _, ep := range es.Endpoints {
+//			if ep.TargetRef == nil {
+//				continue
+//			}
+//
+//			exportedEndpoint := apis.Endpoint{
+//				Cluster:   c.name,
+//				Zone:      c.zone,
+//				Region:    c.region,
+//				Addresses: ep.Addresses,
+//				Hostname:  ep.Hostname,
+//				TargetRef: ep.TargetRef,
+//			}
+//
+//			if e, found := endpointByName[ep.TargetRef.Name]; found {
+//				e.Addresses = append(e.Addresses, ep.Addresses...)
+//			} else {
+//				endpoints = append(endpoints, exportedEndpoint)
+//				endpointByName[ep.TargetRef.Name] = &exportedEndpoint
+//			}
+//		}
+//	}
+//
+//	return endpoints, nil
+//}
+
+func (c *Cluster) waitForGlobalServicesReady(wg *sync.WaitGroup, namespace string, expectedGlobalServices []apis.GlobalService) {
 	defer wg.Done()
 
 	framework.Logf("Waiting for cluster %s all global services to be ready", c.name)
 	timeout := time.Duration(framework.TestContext.WaitTimeout) * time.Second
+
+	readyServiceNames := make(map[string]bool)
+	allServicesReady := false
 	err := wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		if !c.nginxGlobalServiceReady {
-			ready, err := c.checkGlobalServiceReady(serviceNameNginx, namespace, apis.ClusterIP, expectedGlobalServices[serviceNameNginx])
+		for _, gs := range expectedGlobalServices {
+			if readyServiceNames[gs.Name] {
+				continue
+			}
+
+			ready, err := c.checkGlobalServiceReady(gs.Name, namespace, gs)
 			if err != nil {
 				return false, err
 			}
-			if !ready {
-				return false, nil
-			}
-			c.nginxGlobalServiceReady = true
+
+			readyServiceNames[gs.Name] = ready
 		}
 
-		if !c.mysqlGlobalServiceReady {
-			ready, err := c.checkGlobalServiceReady(serviceNameMySQL, namespace, apis.Headless, expectedGlobalServices[serviceNameMySQL])
-			if err != nil {
-				return false, err
-			}
-			if !ready {
-				return false, nil
-			}
-			c.mysqlGlobalServiceReady = true
+		allServicesReady = false
+		for _, b := range readyServiceNames {
+			allServicesReady = allServicesReady || b
 		}
 
-		return true, nil
+		return allServicesReady, nil
 	})
 
 	if err != nil {
-		framework.Logf("globalservices in cluster %s are not ready after %d seconds. Error: %v", c.name, framework.TestContext.WaitTimeout, err)
+		framework.Logf("global services in cluster %s are not ready after %d seconds. Error: %v", c.name, framework.TestContext.WaitTimeout, err)
 	}
+
+	c.servicesReady = allServicesReady
 }
 
-func (c Cluster) checkGlobalServiceReady(name, namespace string, serviceType apis.ServiceType, expectedGlobalService apis.GlobalService) (bool, error) {
+func (c Cluster) checkGlobalServiceReady(name, namespace string, expectedGlobalService apis.GlobalService) (bool, error) {
 	var globalservice apis.GlobalService
 	err := c.client.Get(context.TODO(),
 		client.ObjectKey{Name: name, Namespace: namespace},
@@ -328,13 +352,12 @@ func (c Cluster) checkGlobalServiceReady(name, namespace string, serviceType api
 		return false, err
 	}
 
-	if globalservice.Spec.Type != serviceType {
+	if globalservice.Spec.Type != expectedGlobalService.Spec.Type {
 		return false, fmt.Errorf("%s globalservice type is %s, but expected type is %s",
-			name, string(globalservice.Spec.Type), string(serviceType))
+			name, string(globalservice.Spec.Type), string(expectedGlobalService.Spec.Type))
 	}
 
-	if len(globalservice.Spec.Endpoints) == 0 ||
-		len(globalservice.Spec.Endpoints) != len(expectedGlobalService.Spec.Endpoints) {
+	if len(globalservice.Spec.Endpoints) != len(expectedGlobalService.Spec.Endpoints) {
 		return false, nil
 	}
 
@@ -354,15 +377,15 @@ func (c Cluster) checkGlobalServiceReady(name, namespace string, serviceType api
 	return true, nil
 }
 
-func (c Cluster) getServiceIP(servicename, namespace string) (string, error) {
+func (c Cluster) getServiceIP(servicename, namespace string) ([]string, error) {
 	svc, err := c.clientset.CoreV1().Services(namespace).Get(context.TODO(), servicename, metav1.GetOptions{})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return svc.Spec.ClusterIP, nil
+	return svc.Spec.ClusterIPs, nil
 }
 
-func (c Cluster) getValuesFromDeploymentArguments(name, namespace string, argKeys ...string) ([]string, error) {
+func (c Cluster) getDeployArguments(name, namespace string, argKeys ...string) ([]string, error) {
 	// e.g. deploy service-hub, ns fabedge
 	dp, err := c.clientset.AppsV1().Deployments(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
@@ -388,6 +411,11 @@ func (c Cluster) getValuesFromDeploymentArguments(name, namespace string, argKey
 func (c Cluster) execCurl(pod corev1.Pod, url string) (string, string, error) {
 	timeout := fmt.Sprint(framework.TestContext.CurlTimeout)
 	return c.execute(pod, []string{"curl", "-sS", "-m", timeout, url})
+}
+
+func (c Cluster) execCurl6(pod corev1.Pod, url string) (string, string, error) {
+	timeout := fmt.Sprint(framework.TestContext.CurlTimeout)
+	return c.execute(pod, []string{"curl", "-6", "-sS", "-m", timeout, url})
 }
 
 func (c Cluster) execute(pod corev1.Pod, cmd []string) (string, string, error) {
@@ -424,4 +452,25 @@ func (c Cluster) execute(pod corev1.Pod, cmd []string) (string, string, error) {
 	}
 
 	return stdout.String(), stderr.String(), err
+}
+
+func equalEndpoints(a, b apis.Endpoint) bool {
+	if a.Hostname != nil && b.Hostname != nil {
+		if *(a.Hostname) != *(b.Hostname) {
+			return false
+		}
+	} else if a.Hostname != b.Hostname {
+		return false
+	}
+	switch {
+	case a.Cluster != b.Cluster:
+		return false
+	case a.Zone != b.Zone:
+		return false
+	case a.Region != b.Region:
+		return false
+	case !reflect.DeepEqual(a.Addresses, b.Addresses):
+		return false
+	}
+	return true
 }

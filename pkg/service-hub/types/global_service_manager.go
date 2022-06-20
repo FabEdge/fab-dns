@@ -3,7 +3,6 @@ package types
 import (
 	"context"
 	"sync"
-	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,12 +16,12 @@ import (
 type GlobalServiceManager interface {
 	// CreateOrMergeGlobalService will create global service if not exists
 	// otherwise merge endpoints and ports of service passed in
-	CreateOrMergeGlobalService(service apis.GlobalService) error
+	CreateOrMergeGlobalService(ctx context.Context, service apis.GlobalService) error
 
 	// RevokeGlobalService will remove endpoints of cluster from global service
 	// specified by namespace/name, if no endpoints left, the global service will
 	// be also deleted
-	RevokeGlobalService(clusterName, namespace, serviceName string) error
+	RevokeGlobalService(ctx context.Context, clusterName, namespace, serviceName string) error
 }
 
 var _ GlobalServiceManager = &globalServiceManager{}
@@ -44,12 +43,9 @@ func NewGlobalServiceManager(cli client.Client, allowCreateNamespace bool) Globa
 	}
 }
 
-func (manager *globalServiceManager) CreateOrMergeGlobalService(externalService apis.GlobalService) error {
+func (manager *globalServiceManager) CreateOrMergeGlobalService(ctx context.Context, externalService apis.GlobalService) error {
 	manager.lock.Lock()
 	defer manager.lock.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
 
 	if manager.allowCreateNamespace {
 		if err := nsutil.Ensure(ctx, manager.client, externalService.Namespace); err != nil {
@@ -85,12 +81,9 @@ func (manager *globalServiceManager) CreateOrMergeGlobalService(externalService 
 	return err
 }
 
-func (manager *globalServiceManager) RevokeGlobalService(clusterName, namespace, serviceName string) error {
+func (manager *globalServiceManager) RevokeGlobalService(ctx context.Context, clusterName, namespace, serviceName string) error {
 	manager.lock.Lock()
 	defer manager.lock.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
 
 	var (
 		svc apis.GlobalService

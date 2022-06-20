@@ -2,6 +2,7 @@ package importer
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -15,15 +16,32 @@ import (
 	nsutil "github.com/fabedge/fab-dns/pkg/util/namespace"
 )
 
-type GetGlobalServicesFunc func() ([]apis.GlobalService, error)
+type GetGlobalServicesFunc func(ctx context.Context) ([]apis.GlobalService, error)
 type Config struct {
 	Interval             time.Duration
+	RequestTimeout       time.Duration
 	Manager              ctrlpkg.Manager
 	GetGlobalServices    GetGlobalServicesFunc
 	AllowCreateNamespace bool
 }
 
 func AddToManager(cfg Config) error {
+	if cfg.Interval == 0 {
+		return fmt.Errorf("interval is too small")
+	}
+
+	if cfg.RequestTimeout == 0 {
+		return fmt.Errorf("request timeout is too small")
+	}
+
+	if cfg.Manager == nil {
+		return fmt.Errorf("controller manager is required")
+	}
+
+	if cfg.GetGlobalServices == nil {
+		return fmt.Errorf("GetGlobalServices is required")
+	}
+
 	return cfg.Manager.Add(&globalServiceImporter{
 		Config: cfg,
 		client: cfg.Manager.GetClient(),
@@ -53,7 +71,10 @@ func (importer *globalServiceImporter) Start(ctx context.Context) error {
 }
 
 func (importer *globalServiceImporter) importServices() {
-	services, err := importer.GetGlobalServices()
+	ctx, cancel := context.WithTimeout(context.Background(), importer.RequestTimeout)
+	defer cancel()
+
+	services, err := importer.GetGlobalServices(ctx)
 	if err != nil {
 		importer.log.Error(err, "failed to get global services")
 		return
@@ -66,8 +87,6 @@ func (importer *globalServiceImporter) importServices() {
 	}
 
 	var localGlobalServices apis.GlobalServiceList
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
 	if err = importer.client.List(ctx, &localGlobalServices); err != nil {
 		importer.log.Error(err, "failed to list local global services")
 		return
@@ -81,7 +100,7 @@ func (importer *globalServiceImporter) importServices() {
 }
 
 func (importer *globalServiceImporter) createOrUpdateGlobalService(sourceService apis.GlobalService) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), importer.RequestTimeout)
 	defer cancel()
 
 	if importer.AllowCreateNamespace {
@@ -122,7 +141,7 @@ func (importer *globalServiceImporter) createOrUpdateGlobalService(sourceService
 }
 
 func (importer *globalServiceImporter) deleteService(svc apis.GlobalService) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), importer.RequestTimeout)
 	defer cancel()
 
 	if err := importer.client.Delete(ctx, &svc); err != nil {
