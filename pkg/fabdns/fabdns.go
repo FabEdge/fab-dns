@@ -85,8 +85,9 @@ func (f FabDNS) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) 
 	}
 
 	if err != nil {
+		log.Debugf("failed to get records: %s", err)
+
 		if f.IsNameError(err) {
-			log.Debugf("get records err: %v", err)
 			return f.nextOrFailure(&state, ctx, w, r, dns.RcodeNameError, err)
 		}
 		return dns.RcodeServerFailure, plugin.Error(f.Name(), err)
@@ -106,12 +107,15 @@ func (f FabDNS) IsNameError(err error) bool {
 }
 
 func (f *FabDNS) getGlobalRecords(state *request.Request, parsedReq recordRequest) ([]dns.RR, error) {
-	namespace, service, clustername, hostname := parsedReq.namespace, parsedReq.service, parsedReq.cluster, parsedReq.hostname
+	namespace, serviceName, clusterName, hostname := parsedReq.namespace, parsedReq.service, parsedReq.cluster, parsedReq.hostname
 
-	if len(namespace) == 0 || len(service) == 0 {
+	if len(namespace) == 0 || len(serviceName) == 0 {
+		log.Debugf("no namespace or no service name is found in query")
 		return nil, errNoItems
 	}
-	if len(hostname) > 0 && clustername == "" {
+
+	if len(hostname) > 0 && clusterName == "" {
+		log.Debugf("query has hostname but no clusterName")
 		return nil, errInvalidRequest
 	}
 
@@ -119,13 +123,14 @@ func (f *FabDNS) getGlobalRecords(state *request.Request, parsedReq recordReques
 		globalService apis.GlobalService
 		serviceKey    = client.ObjectKey{
 			Namespace: namespace,
-			Name:      service,
+			Name:      serviceName,
 		}
 	)
 
 	err := f.Client.Get(context.TODO(), serviceKey, &globalService)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			log.Debugf("global service %s/%s is not found", namespace, serviceName)
 			return nil, errNoItems
 		}
 		log.Errorf("failed to find GlobalService err: %v, query name is %s", err, state.Name())
@@ -133,12 +138,13 @@ func (f *FabDNS) getGlobalRecords(state *request.Request, parsedReq recordReques
 	}
 
 	var (
-		headless              = clustername != ""
+		headless              = clusterName != ""
 		existHeadlessQName    bool
 		clusterMatchedRecords []dns.RR
 		inZoneRecords         []dns.RR
 		inRegionRecords       []dns.RR
 	)
+
 	if headless {
 		if globalService.Spec.Type != apis.Headless {
 			log.Debugf("the type of GlobalService is %s not match with %s", globalService.Spec.Type, apis.Headless)
@@ -146,11 +152,12 @@ func (f *FabDNS) getGlobalRecords(state *request.Request, parsedReq recordReques
 		}
 	} else {
 		// local cluster endpoints preference
-		clustername = f.Cluster.Name
+		clusterName = f.Cluster.Name
 	}
+
 	for _, endpoint := range globalService.Spec.Endpoints {
 		switch {
-		case endpoint.Cluster == clustername:
+		case endpoint.Cluster == clusterName:
 			if headless {
 				if endpoint.Hostname != nil && *endpoint.Hostname == hostname {
 					existHeadlessQName = true
@@ -172,6 +179,7 @@ func (f *FabDNS) getGlobalRecords(state *request.Request, parsedReq recordReques
 
 	if headless {
 		if !existHeadlessQName {
+			log.Debugf("no matched endpoints found")
 			return nil, errNoItems
 		}
 		return clusterMatchedRecords, nil
@@ -205,6 +213,7 @@ func (f *FabDNS) getAdHocRecords(state *request.Request, parsedReq recordRequest
 	err := f.Client.Get(context.TODO(), serviceKey, &globalService)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			log.Debugf("no global service found by key: %s", serviceKey)
 			return nil, errNoItems
 		}
 		log.Errorf("failed to find GlobalService err: %v, query name is %s", err, state.Name())

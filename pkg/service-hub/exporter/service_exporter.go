@@ -2,6 +2,7 @@ package exporter
 
 import (
 	"context"
+	"sort"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -75,7 +76,7 @@ func (exporter serviceExporter) Reconcile(ctx context.Context, req reconcile.Req
 	if err = exporter.client.Get(ctx, req.NamespacedName, &svc); err != nil {
 		if errors.IsNotFound(err) {
 			log.V(5).Info("service is not found")
-			err = exporter.revokeGlobalService(req.NamespacedName)
+			err = exporter.revokeGlobalService(ctx, req.NamespacedName)
 			return
 		}
 
@@ -85,7 +86,7 @@ func (exporter serviceExporter) Reconcile(ctx context.Context, req reconcile.Req
 
 	if exporter.shouldSkipService(svc) {
 		log.V(5).Info("this service is not a global-service")
-		err = exporter.revokeGlobalService(req.NamespacedName)
+		err = exporter.revokeGlobalService(ctx, req.NamespacedName)
 		return
 	}
 
@@ -106,7 +107,11 @@ func (exporter serviceExporter) Reconcile(ctx context.Context, req reconcile.Req
 
 	if svc.Spec.ClusterIP == corev1.ClusterIPNone {
 		serviceType = apis.Headless
-		endpoints, err = exporter.getEndpointsOfService(ctx, svc)
+		endpoints, err = GetEndpointsOfHeadlessService(exporter.client, ctx, svc.Namespace, svc.Name, ClusterInfo{
+			Name:   exporter.ClusterName,
+			Zone:   exporter.Zone,
+			Region: exporter.Region,
+		})
 		if err != nil {
 			exporter.log.Error(err, "failed to get endpointslices of service")
 			return
@@ -114,10 +119,10 @@ func (exporter serviceExporter) Reconcile(ctx context.Context, req reconcile.Req
 	} else {
 		serviceType = apis.ClusterIP
 		endpoints = append(endpoints, apis.Endpoint{
+			Addresses: svc.Spec.ClusterIPs,
 			Cluster:   exporter.ClusterName,
 			Zone:      exporter.Zone,
 			Region:    exporter.Region,
-			Addresses: []string{svc.Spec.ClusterIP},
 		})
 	}
 
@@ -135,7 +140,7 @@ func (exporter serviceExporter) Reconcile(ctx context.Context, req reconcile.Req
 	}
 
 	log.V(5).Info("global service is exported", "globalService", globalService)
-	err = exporter.ExportGlobalService(globalService)
+	err = exporter.ExportGlobalService(ctx, globalService)
 	if err != nil {
 		log.Error(err, "failed to export service")
 		return
@@ -145,40 +150,11 @@ func (exporter serviceExporter) Reconcile(ctx context.Context, req reconcile.Req
 	return result, nil
 }
 
-func (exporter *serviceExporter) getEndpointsOfService(ctx context.Context, svc corev1.Service) ([]apis.Endpoint, error) {
-	var endpointSliceList discoveryv1.EndpointSliceList
-	err := exporter.client.List(ctx, &endpointSliceList,
-		client.InNamespace(svc.Namespace),
-		client.MatchingLabels{
-			"kubernetes.io/service-name": svc.Name,
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	var endpoints []apis.Endpoint
-	for _, es := range endpointSliceList.Items {
-		for _, ep := range es.Endpoints {
-			endpoints = append(endpoints, apis.Endpoint{
-				Cluster:   exporter.ClusterName,
-				Zone:      exporter.Zone,
-				Region:    exporter.Region,
-				Addresses: ep.Addresses,
-				Hostname:  ep.Hostname,
-				TargetRef: ep.TargetRef,
-			})
-		}
-	}
-
-	return endpoints, nil
-}
-
 func (exporter serviceExporter) shouldSkipService(svc corev1.Service) bool {
 	return !isGlobalService(svc.Labels) || svc.Spec.Type != corev1.ServiceTypeClusterIP
 }
 
-func (exporter serviceExporter) revokeGlobalService(serviceKey client.ObjectKey) error {
+func (exporter serviceExporter) revokeGlobalService(ctx context.Context, serviceKey client.ObjectKey) error {
 	log := exporter.log.WithValues("serviceKey", serviceKey)
 
 	if !exporter.serviceKeySet.Has(serviceKey) {
@@ -187,7 +163,7 @@ func (exporter serviceExporter) revokeGlobalService(serviceKey client.ObjectKey)
 	}
 
 	log.V(5).Info("revoke global service and associated endpoints")
-	if err := exporter.RevokeGlobalService(exporter.ClusterName, serviceKey.Namespace, serviceKey.Name); err != nil {
+	if err := exporter.RevokeGlobalService(ctx, exporter.ClusterName, serviceKey.Namespace, serviceKey.Name); err != nil {
 		log.Error(err, "failed to revoke global service")
 		return err
 	}
@@ -200,3 +176,63 @@ func (exporter serviceExporter) revokeGlobalService(serviceKey client.ObjectKey)
 func isGlobalService(labels map[string]string) bool {
 	return labels != nil && labels[labelGlobalService] == "true"
 }
+
+func GetEndpointsOfHeadlessService(cli client.Client, ctx context.Context, namespace, serviceName string, cluster ClusterInfo) ([]apis.Endpoint, error) {
+	var endpointSliceList discoveryv1.EndpointSliceList
+	err := cli.List(ctx, &endpointSliceList,
+		client.InNamespace(namespace),
+		client.MatchingLabels{
+			"kubernetes.io/service-name": serviceName,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	endpointByName := make(map[string]apis.Endpoint)
+	sort.Sort(ByAddressType(endpointSliceList.Items))
+	for _, es := range endpointSliceList.Items {
+		if es.AddressType == discoveryv1.AddressTypeFQDN {
+			continue
+		}
+
+		for _, ep := range es.Endpoints {
+			if e, found := endpointByName[ep.TargetRef.Name]; found {
+				e.Addresses = append(e.Addresses, ep.Addresses...)
+				endpointByName[ep.TargetRef.Name] = e
+			} else {
+				endpoint := apis.Endpoint{
+					Addresses: ep.Addresses,
+					Hostname:  ep.Hostname,
+					TargetRef: ep.TargetRef,
+					Cluster:   cluster.Name,
+					Zone:      cluster.Zone,
+					Region:    cluster.Region,
+				}
+				endpointByName[ep.TargetRef.Name] = endpoint
+			}
+		}
+	}
+
+	endpoints := make([]apis.Endpoint, 0, len(endpointByName))
+	for _, ep := range endpointByName {
+		endpoints = append(endpoints, ep)
+	}
+	sort.Sort(ByName(endpoints))
+
+	return endpoints, nil
+}
+
+type ByName []apis.Endpoint
+type ByAddressType []discoveryv1.EndpointSlice
+type ClusterInfo struct {
+	Name, Region, Zone string
+}
+
+func (a ByName) Len() int           { return len(a) }
+func (a ByName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByName) Less(i, j int) bool { return a[i].TargetRef.Name < a[j].TargetRef.Name }
+
+func (a ByAddressType) Len() int           { return len(a) }
+func (a ByAddressType) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByAddressType) Less(i, j int) bool { return a[i].AddressType < a[j].AddressType }

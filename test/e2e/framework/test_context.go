@@ -19,10 +19,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/onsi/ginkgo/config"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 type PreserveResourcesMode string
@@ -34,28 +34,27 @@ const (
 )
 
 type Context struct {
-	MultiClusterConfigDir string
-	FabdnsZone            string
-	KubeConfig            string
-	EdgeLabels            string
-	GenReport             bool
-	ReportFile            string
-	WaitTimeout           int64
-	CurlTimeout           int64
-	NetToolImage          string
-	PreserveResources     string
-	ShowExecError         bool
+	KubeConfigsDir    string
+	FabdnsZone        string
+	EdgeLabels        string
+	GenReport         bool
+	ReportFile        string
+	RequestTimeout    time.Duration
+	WaitTimeout       int64
+	CurlTimeout       int64
+	NetToolImage      string
+	IPv6Enabled       bool
+	PreserveResources string
+	ShowExecError     bool
 }
 
 var TestContext Context
 
 func RegisterAndHandleFlags() {
-	flag.StringVar(&TestContext.MultiClusterConfigDir, "multi-cluster-kube-config-dir", "",
-		"Multi cluster kubeconfig each named by it's own host IP, all stored in this dir for testing")
+	flag.StringVar(&TestContext.KubeConfigsDir, "kube-configs-dir", "",
+		"The path to a directory which contains all kubeconfig files of clusters to test")
 	flag.StringVar(&TestContext.FabdnsZone, "fabdns-zone", "global",
 		"The root zone in fabdns for DNS resolving")
-	flag.StringVar(&TestContext.KubeConfig, "kube-config", clientcmd.RecommendedHomeFile,
-		"Path to config containing embedded authinfo for kubernetes.")
 	flag.StringVar(&TestContext.PreserveResources, "preserve-resources", string(PreserveResourcesOnFailure),
 		"Whether preserve test resources, options: always, never, fail")
 	flag.BoolVar(&TestContext.GenReport, "gen-report", false,
@@ -66,12 +65,13 @@ func RegisterAndHandleFlags() {
 		"How long to wait for test resources are ready. Unit: seconds")
 	flag.Int64Var(&TestContext.CurlTimeout, "curl-timeout", 30,
 		"Maxtime for curl to finish. Unit: seconds")
-	flag.StringVar(&TestContext.NetToolImage, "net-tool-image", "praqma/network-multitool:latest",
+	flag.StringVar(&TestContext.NetToolImage, "net-tool-image", "fabedge/net-tool:v0.1.0",
 		"The net-tool image")
 	flag.BoolVar(&TestContext.ShowExecError, "show-exec-error", false,
 		"display error of executing curl or ping")
 	flag.StringVar(&TestContext.EdgeLabels, "edge-labels", "node-role.kubernetes.io/edge",
 		"Labels to filter edge nodes, (e.g. key1,key2=,key3=value3)")
+	flag.BoolVar(&TestContext.IPv6Enabled, "6", false, "Whether to test IPv6 services")
 
 	flag.Parse()
 
@@ -85,7 +85,7 @@ func RegisterAndHandleFlags() {
 		fatalf("unknown preserve resources mode: %s", pr)
 	}
 
-	if len(TestContext.MultiClusterConfigDir) == 0 {
+	if len(TestContext.KubeConfigsDir) == 0 {
 		fatalf("multi cluster kubeconfig dir is empty")
 	}
 

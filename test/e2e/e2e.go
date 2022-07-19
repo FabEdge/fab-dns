@@ -18,13 +18,14 @@ import (
 	"context"
 	"io/ioutil"
 	"math/rand"
-	"reflect"
+	"path"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/klog/v2"
@@ -37,19 +38,19 @@ import (
 const (
 	testNamespace = "fabdns-e2e-test"
 
-	nameNetTool     = "net-tool"
-	nameDeployment  = "nginx"
-	nameStatefulSet = "mysql"
-	defaultReplicas = 2
+	nameNetTool = "net-tool"
+	nameNginx   = "nginx"
+	nameMySQL   = "mysql"
 
 	labelKeyApp           = "app"
-	labelKeyInstance      = "instance"
 	labelKeyGlobalService = "fabedge.io/global-service"
 )
 
 var (
 	serviceNameNginx = "nginx"
+	//serviceNameNginx6 = "nginx6"
 	serviceNameMySQL = "mysql"
+	//serviceNameMySQL6 = "mysql6"
 
 	// 标记是否有失败的spec
 	hasFailedSpec = false
@@ -62,7 +63,9 @@ func init() {
 
 	rand.Seed(int64(time.Now().UnixNano()))
 	serviceNameNginx = getName(serviceNameNginx)
+	//serviceNameNginx6 = getName(serviceNameNginx6)
 	serviceNameMySQL = getName(serviceNameMySQL)
+	//serviceNameMySQL6 = getName(serviceNameMySQL6)
 }
 
 // RunE2ETests checks configuration parameters (specified through flags) and then runs
@@ -111,37 +114,26 @@ var _ = ginkgo.SynchronizedAfterSuite(func() {
 func fabdnsE2eTestPrepare() {
 	framework.Logf("fabdns e2e test")
 	// read dir get all cluster IPs
-	configDir := framework.TestContext.MultiClusterConfigDir
-	filelist, err := ioutil.ReadDir(configDir)
+	configDir := framework.TestContext.KubeConfigsDir
+	files, err := ioutil.ReadDir(configDir)
 	if err != nil {
 		framework.Failf("Error reading kubeconfig dir: %v", err)
 	}
-	clusterIPs := make([]string, 0)
-	for _, f := range filelist {
-		ipStr := f.Name()
-		clusterIPs = append(clusterIPs, ipStr)
-	}
-	if len(clusterIPs) <= 1 {
-		framework.Failf("only %d clusters are found, can not do e2e test", len(clusterIPs))
-	}
-	framework.Logf("kubeconfigDir=%v get cluster IP list: %v", configDir, clusterIPs)
 
-	clusterNameList := []string{}
-	for _, clusterIP := range clusterIPs {
-		cluster, err := generateCluster(configDir, clusterIP)
+	if len(files) <= 1 {
+		framework.Failf("only %d clusters are found, can not do e2e test", len(files))
+	}
+
+	for _, f := range files {
+		kubeconfigPath := path.Join(configDir, f.Name())
+		cluster, err := generateCluster(kubeconfigPath)
 		if err != nil {
-			framework.Logf("generating cluster <%s> err: %v", clusterIP, err)
+			framework.Logf("failed to create cluster from kubeconfig file %s. err: %v", kubeconfigPath, err)
 			continue
 		}
 
-		clusterNameList = append(clusterNameList, cluster.name+":"+clusterIP)
 		clusters = append(clusters, cluster)
 	}
-
-	if len(clusterNameList) <= 1 {
-		framework.Failf("only %d clusters are found, can not do e2e test", len(clusterNameList))
-	}
-	framework.Logf("cluster list: %v", clusterNameList)
 
 	prepareClustersNamespace(testNamespace)
 	preparePodsOnEachCluster(testNamespace)
@@ -160,16 +152,24 @@ func prepareClustersNamespace(namespace string) {
 func preparePodsOnEachCluster(namespace string) {
 	framework.Logf("Prepare pods on each cluster")
 	for _, cluster := range clusters {
-		cluster.prepareStatefulSet(nameStatefulSet, namespace, defaultReplicas)
-		cluster.prepareDeployment(nameDeployment, namespace, defaultReplicas)
+		cluster.prepareMySQLStatefulSet(namespace)
+		cluster.prepareNginxDeployment(namespace)
 		cluster.prepareDebugPod(nameNetTool, namespace)
 	}
 }
 
 func prepareServicesOnEachCluster(namespace string) {
+	ipFamilies := []corev1.IPFamily{corev1.IPv4Protocol}
+	if framework.TestContext.IPv6Enabled {
+		ipFamilies = append(ipFamilies, corev1.IPv6Protocol)
+	}
 	for _, cluster := range clusters {
-		cluster.prepareService(serviceNameNginx, namespace, false)
-		cluster.prepareService(serviceNameMySQL, namespace, true)
+		cluster.prepareService(serviceNameNginx, namespace, nameNginx, false, ipFamilies)
+		cluster.prepareService(serviceNameMySQL, namespace, nameMySQL, true, ipFamilies)
+		//if framework.TestContext.IPv6Enabled {
+		//	cluster.prepareService(serviceNameNginx6, namespace, nameNginx, false, corev1.IPv6Protocol)
+		//	cluster.prepareService(serviceNameMySQL6, namespace, nameMySQL, true, corev1.IPv6Protocol)
+		//}
 	}
 }
 
@@ -188,13 +188,18 @@ func WaitForAllClusterPodsReady(namespace string) {
 	}
 }
 
-func generateExpectedGlobalServices() map[string]apis.GlobalService {
-	globalServices := make(map[string]apis.GlobalService)
-	g := generateGlobalService(serviceNameNginx, testNamespace, apis.ClusterIP)
-	globalServices[serviceNameNginx] = g
+func generateExpectedGlobalServices() []apis.GlobalService {
+	globalServices := []apis.GlobalService{
+		generateGlobalService(serviceNameNginx, testNamespace, apis.ClusterIP),
+		generateGlobalService(serviceNameMySQL, testNamespace, apis.Headless),
+	}
 
-	g = generateGlobalService(serviceNameMySQL, testNamespace, apis.Headless)
-	globalServices[serviceNameMySQL] = g
+	//if framework.TestContext.IPv6Enabled {
+	//	globalServices = append(globalServices,
+	//		generateGlobalService(serviceNameNginx6, testNamespace, apis.ClusterIP),
+	//		generateGlobalService(serviceNameMySQL6, testNamespace, apis.Headless),
+	//	)
+	//}
 
 	return globalServices
 }
@@ -225,33 +230,10 @@ func WaitForAllClusterGlobalServicesReady(namespace string) {
 
 	for _, cluster := range clusters {
 		if !cluster.ready() {
-			framework.Logf("cluster %s status: podsReady=%t nginxGlobalServiceReady=%t mysqlGlobalServiceReady=%t",
-				cluster.name, cluster.podsReady, cluster.nginxGlobalServiceReady, cluster.mysqlGlobalServiceReady)
-			framework.Failf("clusters exist not ready global services")
+			framework.Failf("cluster %s is not ready after %d seconds", cluster.name, framework.TestContext.WaitTimeout)
 		}
 	}
 	framework.Logf("all cluster global services ready")
-}
-
-func equalEndpoints(a, b apis.Endpoint) bool {
-	if a.Hostname != nil && b.Hostname != nil {
-		if *(a.Hostname) != *(b.Hostname) {
-			return false
-		}
-	} else if a.Hostname != b.Hostname {
-		return false
-	}
-	switch {
-	case a.Cluster != b.Cluster:
-		return false
-	case a.Zone != b.Zone:
-		return false
-	case a.Region != b.Region:
-		return false
-	case !reflect.DeepEqual(a.Addresses, b.Addresses):
-		return false
-	}
-	return true
 }
 
 func createObject(cli client.Client, object client.Object) {

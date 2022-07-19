@@ -28,44 +28,66 @@ import (
 var _ = Describe("FabDNS", func() {
 	It("any pod can access ClusterIP global service by domain name", func() {
 		for _, cluster := range clusters {
-			debugPod := corev1.Pod{}
-			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: nameNetTool}, &debugPod)
+			var clientPod corev1.Pod
+			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: nameNetTool}, &clientPod)
 			framework.ExpectNoError(err)
 
-			serviceName := fmt.Sprintf("%s.%s.svc.%s", serviceNameNginx, testNamespace, framework.TestContext.FabdnsZone)
-			framework.Logf("pod %s of cluster %s visit global service %s ", nameNetTool, cluster.name, serviceName)
-			_, _, err = cluster.execCurl(debugPod, serviceName)
+			url := fmt.Sprintf("%s.%s.svc.%s", serviceNameNginx, testNamespace, framework.TestContext.FabdnsZone)
+
+			framework.Logf("%s/%s visit global service %s ", cluster.name, nameNetTool, url)
+			_, _, err = cluster.execCurl(clientPod, url)
 			framework.ExpectNoError(err)
+
+			if framework.TestContext.IPv6Enabled {
+				framework.Logf("%s/%s visit global service %s using IPv6", cluster.name, nameNetTool, url)
+				_, _, err = cluster.execCurl(clientPod, url)
+				framework.ExpectNoError(err)
+			}
 		}
 	})
 
 	It("any pod can access Headless global service by domain name", func() {
 		for _, cluster := range clusters {
-			debugPod := corev1.Pod{}
-			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: nameNetTool}, &debugPod)
+			var clientPod corev1.Pod
+			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: nameNetTool}, &clientPod)
 			framework.ExpectNoError(err)
 
-			serviceName := fmt.Sprintf("%s.%s.svc.%s", serviceNameMySQL, testNamespace, framework.TestContext.FabdnsZone)
-			framework.Logf("pod %s of cluster %s visit global service %s ", nameNetTool, cluster.name, serviceName)
-			_, _, err = cluster.execCurl(debugPod, serviceName)
+			url := fmt.Sprintf("%s.%s.svc.%s", serviceNameMySQL, testNamespace, framework.TestContext.FabdnsZone)
+
+			framework.Logf("%s/%s visit global service %s ", cluster.name, nameNetTool, url)
+			_, _, err = cluster.execCurl(clientPod, url)
 			framework.ExpectNoError(err)
+
+			if framework.TestContext.IPv6Enabled {
+				framework.Logf("%s/%s visit global service %s using IPv6", cluster.name, nameNetTool, url)
+				_, _, err = cluster.execCurl6(clientPod, url)
+				framework.ExpectNoError(err)
+			}
 		}
 	})
 
 	It("any pod can access each endpoint of Headless global service by domain name", func() {
 		for _, c1 := range clusters {
-			debugPod := corev1.Pod{}
-			err := c1.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: nameNetTool}, &debugPod)
+			clientPod := corev1.Pod{}
+			err := c1.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: nameNetTool}, &clientPod)
 			framework.ExpectNoError(err)
 
 			for _, c2 := range clusters {
-				for x := 0; x < defaultReplicas; x++ {
-					hostname := fmt.Sprintf("%s-%d", nameStatefulSet, x)
-					serviceName := fmt.Sprintf("%s.%s.%s.%s.svc.%s", hostname, c2.name,
+				for x := 0; x < 2; x++ {
+					hostname := fmt.Sprintf("%s-%d", nameMySQL, x)
+
+					url := fmt.Sprintf("%s.%s.%s.%s.svc.%s", hostname, c2.name,
 						serviceNameMySQL, testNamespace, framework.TestContext.FabdnsZone)
-					framework.Logf("pod %s of cluster %s visit endpoint %s", nameNetTool, c1.name, serviceName)
-					_, _, err := c1.execCurl(debugPod, serviceName)
+
+					framework.Logf("%s/%s visit %s ", c1.name, nameNetTool, url)
+					_, _, err := c1.execCurl(clientPod, url)
 					framework.ExpectNoError(err)
+
+					if framework.TestContext.IPv6Enabled {
+						framework.Logf("%s/%s visit %s using IPv6", c1.name, nameNetTool, url)
+						_, _, err = c1.execCurl6(clientPod, url)
+						framework.ExpectNoError(err)
+					}
 				}
 			}
 		}

@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -27,9 +28,9 @@ func (e HttpError) Error() string {
 
 type Interface interface {
 	Heartbeat() error
-	UploadGlobalService(service apis.GlobalService) error
-	DownloadAllGlobalServices() ([]apis.GlobalService, error)
-	DeleteGlobalService(namespace, name string) error
+	UploadGlobalService(ctx context.Context, service apis.GlobalService) error
+	DownloadAllGlobalServices(ctx context.Context) ([]apis.GlobalService, error)
+	DeleteGlobalService(ctx context.Context, namespace, name string) error
 }
 
 var _ Interface = &client{}
@@ -72,14 +73,14 @@ func (c *client) Heartbeat() error {
 	return err
 }
 
-func (c *client) UploadGlobalService(service apis.GlobalService) error {
+func (c *client) UploadGlobalService(ctx context.Context, service apis.GlobalService) error {
 	data, err := json.Marshal(service)
 	if err != nil {
 		return err
 	}
 
 	url := join(c.baseURL, apiserver.PathGlobalServices)
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
@@ -95,8 +96,8 @@ func (c *client) UploadGlobalService(service apis.GlobalService) error {
 	return err
 }
 
-func (c *client) DownloadAllGlobalServices() (services []apis.GlobalService, err error) {
-	req, err := http.NewRequest(http.MethodGet, join(c.baseURL, apiserver.PathGlobalServices), nil)
+func (c *client) DownloadAllGlobalServices(ctx context.Context) (services []apis.GlobalService, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, join(c.baseURL, apiserver.PathGlobalServices), nil)
 	if err != nil {
 		return services, err
 	}
@@ -113,9 +114,9 @@ func (c *client) DownloadAllGlobalServices() (services []apis.GlobalService, err
 	return services, err
 }
 
-func (c *client) DeleteGlobalService(namespace, name string) error {
+func (c *client) DeleteGlobalService(ctx context.Context, namespace, name string) error {
 	addr := fmt.Sprintf("%s/%s/%s", apiserver.PathGlobalServices, namespace, name)
-	req, err := http.NewRequest(http.MethodDelete, join(c.baseURL, addr), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, join(c.baseURL, addr), nil)
 	if err != nil {
 		return err
 	}

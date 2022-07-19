@@ -143,7 +143,7 @@ var _ = Describe("GlobalServiceManager", func() {
 				})
 
 				JustBeforeEach(func() {
-					Expect(td.manager.CreateOrMergeGlobalService(serviceFromBeijing)).To(HaveOccurred())
+					Expect(td.manager.CreateOrMergeGlobalService(context.Background(), serviceFromBeijing)).To(HaveOccurred())
 				})
 
 				It("global service will not be created", func() {
@@ -278,11 +278,11 @@ func newTestDriver(allowCreateNamespace bool, namespace string) *testDriver {
 }
 
 func (td *testDriver) createOrMergeGlobalService(service apis.GlobalService) {
-	Expect(td.manager.CreateOrMergeGlobalService(service)).To(Succeed())
+	Expect(td.manager.CreateOrMergeGlobalService(context.Background(), service)).To(Succeed())
 }
 
 func (td *testDriver) revokeGlobalService(svc apis.GlobalService) {
-	Expect(td.manager.RevokeGlobalService(svc.ClusterName, svc.Namespace, svc.Name)).To(Succeed())
+	Expect(td.manager.RevokeGlobalService(context.Background(), svc.ClusterName, svc.Namespace, svc.Name)).To(Succeed())
 }
 
 func (td *testDriver) getService() apis.GlobalService {

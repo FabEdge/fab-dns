@@ -59,6 +59,7 @@ type Options struct {
 
 	ClusterExpireTime     time.Duration
 	ServiceImportInterval time.Duration
+	RequestTimeout        time.Duration
 	AllowCreateNamespace  bool
 
 	Manager      ctrlpkg.Manager
@@ -85,6 +86,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 
 	flag.DurationVar(&opts.ClusterExpireTime, "cluster-expire-duration", 5*time.Minute, "Expiration time after cluster stops heartbeat")
 	flag.DurationVar(&opts.ServiceImportInterval, "service-import-interval", time.Minute, "The interval between each services importing routine")
+	flag.DurationVar(&opts.RequestTimeout, "request-timeout", 5*time.Second, "Timeout for kubernetes API request")
 	flag.BoolVar(&opts.AllowCreateNamespace, "allow-create-namespace", true, "Determine if service-hub are allowed to create namespace if needed")
 }
 
@@ -168,6 +170,7 @@ func (opts *Options) initAPIServer() (err error) {
 		Client:                opts.Manager.GetClient(),
 		ClusterStore:          opts.ClusterStore,
 		ClusterExpireDuration: opts.ClusterExpireTime,
+		RequestTimeout:        opts.RequestTimeout,
 		GlobalServiceManager:  globalServiceManager,
 		Log:                   log.WithName("apiserver"),
 	})
@@ -207,8 +210,8 @@ func (opts *Options) initClient() error {
 	}
 
 	opts.ExportGlobalService = opts.Client.UploadGlobalService
-	opts.RevokeGlobalService = func(clusterName, namespace, serviceName string) error {
-		return opts.Client.DeleteGlobalService(namespace, serviceName)
+	opts.RevokeGlobalService = func(ctx context.Context, clusterName, namespace, serviceName string) error {
+		return opts.Client.DeleteGlobalService(ctx, namespace, serviceName)
 	}
 
 	err = opts.Client.Heartbeat()
@@ -244,18 +247,20 @@ func (opts Options) initManagerRunnables() (err error) {
 			return err
 		}
 
-		if err = cleaner.AddToManager(
-			opts.Manager,
-			opts.ClusterStore,
-			opts.ClusterExpireTime,
-			opts.RevokeGlobalService,
-		); err != nil {
+		if err = cleaner.AddToManager(cleaner.Config{
+			Manager:             opts.Manager,
+			Store:               opts.ClusterStore,
+			Interval:            opts.ClusterExpireTime,
+			RequestTimeout:      opts.RequestTimeout,
+			RevokeGlobalService: opts.RevokeGlobalService,
+		}); err != nil {
 			log.Error(err, "failed to add cluster cleaner to manager")
 			return err
 		}
 	} else {
 		err = importer.AddToManager(importer.Config{
 			Interval:             opts.ServiceImportInterval,
+			RequestTimeout:       opts.RequestTimeout,
 			Manager:              opts.Manager,
 			GetGlobalServices:    opts.Client.DownloadAllGlobalServices,
 			AllowCreateNamespace: opts.AllowCreateNamespace,

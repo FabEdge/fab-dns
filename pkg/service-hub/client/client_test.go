@@ -1,6 +1,7 @@
 package client_test
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -85,7 +86,7 @@ var _ = Describe("Client", func() {
 		}
 		expectedContent, _ := json.Marshal(service)
 
-		Expect(cli.UploadGlobalService(service)).To(Succeed())
+		Expect(cli.UploadGlobalService(context.Background(), service)).To(Succeed())
 		Expect(req.Header.Get(apiserver.HeaderClusterName)).To(Equal(clusterName))
 		Expect(req.Method).To(Equal(http.MethodPost))
 		Expect(receivedContent).To(Equal(expectedContent))
@@ -142,7 +143,7 @@ var _ = Describe("Client", func() {
 			w.Write(data)
 		})
 
-		services, err := cli.DownloadAllGlobalServices()
+		services, err := cli.DownloadAllGlobalServices(context.Background())
 		Expect(err).To(BeNil())
 		Expect(req.Header.Get(apiserver.HeaderClusterName)).To(Equal(clusterName))
 		Expect(req.Method).To(Equal(http.MethodGet))
@@ -161,7 +162,7 @@ var _ = Describe("Client", func() {
 			w.WriteHeader(http.StatusNoContent)
 		})
 
-		Expect(cli.DeleteGlobalService(namespace, serviceName)).To(Succeed())
+		Expect(cli.DeleteGlobalService(context.Background(), namespace, serviceName)).To(Succeed())
 		Expect(req.URL.Path).To(Equal(expectedPath))
 		Expect(req.Header.Get(apiserver.HeaderClusterName)).To(Equal(clusterName))
 		Expect(req.Method).To(Equal(http.MethodDelete))
