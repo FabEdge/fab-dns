@@ -138,9 +138,15 @@ DNS解析由一个DNS组件负责，coredns会将后缀为global的解析请求�
 
 
 
+有时用户可能会访问组成某个全局服务的某个集群的成员服务，FabDNS支持这个特性，其域名格式如下:
+
+`<cluster>.<service>.<ns>.svc.global`
+
+
+
 当一个全局服务是headless时，除了对服务的域名进行解析，还可以为每个端点进行域名解析，端点的域名格式为:
 
-`<hostname>.<clustername>.<service>.<ns>.svc.global`。
+`<hostname>.<cluster>.<service>.<ns>.svc.global`。
 
 
 
