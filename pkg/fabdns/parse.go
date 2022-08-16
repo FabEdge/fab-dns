@@ -34,11 +34,12 @@ type recordRequest struct {
 func parseRequest(name string) (r recordRequest, err error) {
 	// support the following formats:
 	// {service}.{namespace}.svc.global
+	// {cluster}.{service}.{namespace}.svc.global
 	// {hostname}.{cluster}.{service}.{namespace}.svc.global
-	// {service}.{namespace}.{cluster}.global
+	// {service}.{namespace}.{cluster}.global  deprecated, prefer {cluster}.{service}.{namespace}.svc.global
 
 	labels := dns.SplitDomainName(name)
-	if len(labels) != 4 && len(labels) != 6 {
+	if len(labels) < 4 && len(labels) > 6 {
 		return r, errInvalidRequest
 	}
 
@@ -50,6 +51,12 @@ func parseRequest(name string) (r recordRequest, err error) {
 		r.service = labels[2]
 		r.namespace = labels[3]
 		r.isAdHoc = false
+	case len(labels) == 5:
+		// cluster.service.namespace.svc.global
+		r.cluster = labels[0]
+		r.service = labels[1]
+		r.namespace = labels[2]
+		r.isAdHoc = true
 	case len(labels) == 4 && labels[2] == LabelSVC:
 		// e.g. web.default.svc.global
 		// If you name your cluster as "svc", it is your problem.
@@ -57,6 +64,7 @@ func parseRequest(name string) (r recordRequest, err error) {
 		r.namespace = labels[1]
 		r.isAdHoc = false
 	case len(labels) == 4:
+		// deprecated
 		// e.g. web.default.root.global
 		r.service = labels[0]
 		r.namespace = labels[1]

@@ -120,7 +120,7 @@ func (f FabDNS) IsNameError(err error) bool {
 	return err == errNoItems || err == errInvalidRequest
 }
 
-func (f *FabDNS) getGlobalRecords(state *request.Request, parsedReq recordRequest) ([]dns.RR, error) {
+func (f FabDNS) getGlobalRecords(state *request.Request, parsedReq recordRequest) ([]dns.RR, error) {
 	namespace, serviceName, clusterName, hostname := parsedReq.namespace, parsedReq.service, parsedReq.cluster, parsedReq.hostname
 
 	if len(namespace) == 0 || len(serviceName) == 0 {
