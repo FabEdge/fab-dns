@@ -68,19 +68,31 @@ func testValidRequests() {
 
 	When("ad-hoc clusterIP svc request", func() {
 		It("should no error", func() {
-			test := testExpected{"myservice.mynamespace.mycluster." + testZone,
-				recordRequest{
-					service:   "myservice",
-					namespace: "mynamespace",
-					cluster:   "mycluster",
-					isAdHoc:   true,
-					hostname:  "",
+			tests := []testExpected{
+				{"myservice.mynamespace.mycluster." + testZone,
+					recordRequest{
+						service:   "myservice",
+						namespace: "mynamespace",
+						cluster:   "mycluster",
+						isAdHoc:   true,
+						hostname:  "",
+					},
+				},
+				{"mycluster.myservice.mynamespace.svc." + testZone,
+					recordRequest{
+						service:   "myservice",
+						namespace: "mynamespace",
+						cluster:   "mycluster",
+						isAdHoc:   true,
+						hostname:  "",
+					},
 				},
 			}
-
-			req, err := parseRequest(test.qname)
-			Expect(err).To(BeNil())
-			Expect(req).To(Equal(test.rr))
+			for _, test := range tests {
+				req, err := parseRequest(test.qname)
+				Expect(err).To(BeNil())
+				Expect(req).To(Equal(test.rr))
+			}
 		})
 	})
 }

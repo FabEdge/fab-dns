@@ -338,203 +338,210 @@ func testClusterIPServices() {
 	})
 
 	When("global service type of ClusterIP exists", func() {
+		Context("A Query", func() {
+			It("should succeed with same cluster A record response", func() {
+				fabdns.Cluster.Name = "chaoyang"
+				fabdns.Cluster.Zone = "beijing"
+				fabdns.Cluster.Region = "north"
 
-		It("should succeed with same cluster A record response", func() {
-			fabdns.Cluster.Name = "chaoyang"
-			fabdns.Cluster.Zone = "beijing"
-			fabdns.Cluster.Region = "north"
+				qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
+				testCase := test.Case{
+					Qname: qname,
+					Qtype: dns.TypeA,
+					Rcode: dns.RcodeSuccess,
+					Answer: []dns.RR{
+						test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.3")),
+					},
+				}
+				executeTestCase(fabdns, testRecorder, testCase)
+			})
 
-			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
-			testCase := test.Case{
-				Qname: qname,
-				Qtype: dns.TypeA,
-				Rcode: dns.RcodeSuccess,
-				Answer: []dns.RR{
-					test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.3")),
-				},
-			}
-			executeTestCase(fabdns, testRecorder, testCase)
+			It("should succeed with same cluster zone A record response", func() {
+				fabdns.Cluster.Name = "haidian"
+				fabdns.Cluster.Zone = "beijing"
+				fabdns.Cluster.Region = "north"
+
+				qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
+				testCase := test.Case{
+					Qname: qname,
+					Qtype: dns.TypeA,
+					Rcode: dns.RcodeSuccess,
+					Answer: []dns.RR{
+						test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.1")),
+						test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.3")),
+					},
+				}
+				executeTestCase(fabdns, testRecorder, testCase)
+			})
+
+			It("should succeed with A record responses from the specified cluster", func() {
+				fabdns.Cluster.Name = "haidian"
+				fabdns.Cluster.Zone = "beijing"
+				fabdns.Cluster.Region = "north"
+
+				testcases := []test.Case{
+					{
+						Qname: "nginx-north.default.xicheng.testzone",
+						Qtype: dns.TypeA,
+						Rcode: dns.RcodeSuccess,
+						Answer: []dns.RR{
+							test.A("nginx-north.default.xicheng.testzone    5    IN    A    192.168.1.1"),
+						},
+					},
+					{
+						Qname: "xicheng.nginx-north.default.svc.testzone",
+						Qtype: dns.TypeA,
+						Rcode: dns.RcodeSuccess,
+						Answer: []dns.RR{
+							test.A("xicheng.nginx-north.default.svc.testzone    5    IN    A    192.168.1.1"),
+						},
+					},
+				}
+
+				for _, testcase := range testcases {
+					executeTestCase(fabdns, testRecorder, testcase)
+				}
+			})
+
+			It("should succeed with same cluster region A record response", func() {
+				fabdns.Cluster.Name = "tianjin"
+				fabdns.Cluster.Zone = "tianjin"
+				fabdns.Cluster.Region = "north"
+
+				qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
+				testCase := test.Case{
+					Qname: qname,
+					Qtype: dns.TypeA,
+					Rcode: dns.RcodeSuccess,
+					Answer: []dns.RR{
+						test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.1")),
+						test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.3")),
+						test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.4")),
+					},
+				}
+				executeTestCase(fabdns, testRecorder, testCase)
+			})
+
+			It("should succeed with all A record response if client cluster don't have any endpoints", func() {
+				fabdns.Cluster.Name = "xian"
+				fabdns.Cluster.Zone = "shanxi"
+				fabdns.Cluster.Region = "west"
+
+				qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
+				testCase := test.Case{
+					Qname: qname,
+					Qtype: dns.TypeA,
+					Rcode: dns.RcodeSuccess,
+					Answer: []dns.RR{
+						test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.1")),
+						test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.2")),
+						test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.3")),
+						test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.4")),
+					},
+				}
+				executeTestCase(fabdns, testRecorder, testCase)
+			})
 		})
 
-		It("should succeed with same cluster zone A record response", func() {
-			fabdns.Cluster.Name = "haidian"
-			fabdns.Cluster.Zone = "beijing"
-			fabdns.Cluster.Region = "north"
+		Context("AAAA records", func() {
+			It("should succeed with same cluster AAAA record response", func() {
+				fabdns.Cluster.Name = "chaoyang"
+				fabdns.Cluster.Zone = "beijing"
+				fabdns.Cluster.Region = "north"
 
-			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
-			testCase := test.Case{
-				Qname: qname,
-				Qtype: dns.TypeA,
-				Rcode: dns.RcodeSuccess,
-				Answer: []dns.RR{
-					test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.1")),
-					test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.3")),
-				},
-			}
-			executeTestCase(fabdns, testRecorder, testCase)
+				qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
+				testCase := test.Case{
+					Qname: qname,
+					Qtype: dns.TypeAAAA,
+					Rcode: dns.RcodeSuccess,
+					Answer: []dns.RR{
+						test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::3")),
+					},
+				}
+				executeTestCase(fabdns, testRecorder, testCase)
+			})
+
+			It("should succeed with specified cluster AAAA record response", func() {
+				fabdns.Cluster.Name = "chaoyang"
+				fabdns.Cluster.Zone = "beijing"
+				fabdns.Cluster.Region = "north"
+
+				for _, testcase := range []test.Case{
+					{
+						Qname: "nginx-north.default.chaoyang.testzone",
+						Qtype: dns.TypeAAAA,
+						Rcode: dns.RcodeSuccess,
+						Answer: []dns.RR{
+							test.AAAA("nginx-north.default.chaoyang.testzone    5    IN    AAAA    FF01::3"),
+						},
+					},
+					{
+						Qname: "chaoyang.nginx-north.default.svc.testzone",
+						Qtype: dns.TypeAAAA,
+						Rcode: dns.RcodeSuccess,
+						Answer: []dns.RR{
+							test.AAAA("chaoyang.nginx-north.default.svc.testzone    5    IN    AAAA    FF01::3"),
+						},
+					},
+				} {
+					executeTestCase(fabdns, testRecorder, testcase)
+				}
+			})
+
+			It("should succeed with same zone AAAA record response", func() {
+				fabdns.Cluster.Name = "xicheng"
+				fabdns.Cluster.Zone = "beijing"
+				fabdns.Cluster.Region = "north"
+
+				qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
+				testCase := test.Case{
+					Qname: qname,
+					Qtype: dns.TypeAAAA,
+					Rcode: dns.RcodeSuccess,
+					Answer: []dns.RR{
+						test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::3")),
+					},
+				}
+				executeTestCase(fabdns, testRecorder, testCase)
+			})
+
+			It("should succeed with same region AAAA record response", func() {
+				fabdns.Cluster.Name = "tianjin"
+				fabdns.Cluster.Zone = "tianjin"
+				fabdns.Cluster.Region = "north"
+
+				qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
+				testCase := test.Case{
+					Qname: qname,
+					Qtype: dns.TypeAAAA,
+					Rcode: dns.RcodeSuccess,
+					Answer: []dns.RR{
+						test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::3")),
+						test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::4")),
+					},
+				}
+				executeTestCase(fabdns, testRecorder, testCase)
+			})
+
+			It("should succeed with all AAAA record response", func() {
+				fabdns.Cluster.Name = "xian"
+				fabdns.Cluster.Zone = "shanxi"
+				fabdns.Cluster.Region = "west"
+
+				qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
+				testCase := test.Case{
+					Qname: qname,
+					Qtype: dns.TypeAAAA,
+					Rcode: dns.RcodeSuccess,
+					Answer: []dns.RR{
+						test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::2")),
+						test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::3")),
+						test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::4")),
+					},
+				}
+				executeTestCase(fabdns, testRecorder, testCase)
+			})
 		})
-
-		It("should succeed with A record responses from the specified cluster ", func() {
-			fabdns.Cluster.Name = "haidian"
-			fabdns.Cluster.Zone = "beijing"
-			fabdns.Cluster.Region = "north"
-
-			qname := fmt.Sprintf("%s.%s.%s.%s", svcNginxNorth, namespaceDefault, "xicheng", testZone)
-			testCase := test.Case{
-				Qname: qname,
-				Qtype: dns.TypeA,
-				Rcode: dns.RcodeSuccess,
-				Answer: []dns.RR{
-					test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.1")),
-				},
-			}
-			executeTestCase(fabdns, testRecorder, testCase)
-		})
-
-		It("should succeed with A record responses from the specified cluster ", func() {
-			fabdns.Cluster.Name = "xicheng"
-			fabdns.Cluster.Zone = "beijing"
-			fabdns.Cluster.Region = "north"
-
-			qname := fmt.Sprintf("%s.%s.%s.%s", svcNginxNorth, namespaceDefault, "chaoyang", testZone)
-			testCase := test.Case{
-				Qname: qname,
-				Qtype: dns.TypeA,
-				Rcode: dns.RcodeSuccess,
-				Answer: []dns.RR{
-					test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.3")),
-				},
-			}
-			executeTestCase(fabdns, testRecorder, testCase)
-		})
-
-		It("should succeed with same cluster region A record response", func() {
-			fabdns.Cluster.Name = "tianjin"
-			fabdns.Cluster.Zone = "tianjin"
-			fabdns.Cluster.Region = "north"
-
-			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
-			testCase := test.Case{
-				Qname: qname,
-				Qtype: dns.TypeA,
-				Rcode: dns.RcodeSuccess,
-				Answer: []dns.RR{
-					test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.1")),
-					test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.3")),
-					test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.4")),
-				},
-			}
-			executeTestCase(fabdns, testRecorder, testCase)
-		})
-
-		It("should succeed with all A record response", func() {
-			fabdns.Cluster.Name = "xian"
-			fabdns.Cluster.Zone = "shanxi"
-			fabdns.Cluster.Region = "west"
-
-			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
-			testCase := test.Case{
-				Qname: qname,
-				Qtype: dns.TypeA,
-				Rcode: dns.RcodeSuccess,
-				Answer: []dns.RR{
-					test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.1")),
-					test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.2")),
-					test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.3")),
-					test.A(fmt.Sprintf("%s    5    IN    A    %s", qname, "192.168.1.4")),
-				},
-			}
-			executeTestCase(fabdns, testRecorder, testCase)
-		})
-
-		It("should succeed with same cluster AAAA record response", func() {
-			fabdns.Cluster.Name = "chaoyang"
-			fabdns.Cluster.Zone = "beijing"
-			fabdns.Cluster.Region = "north"
-
-			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
-			testCase := test.Case{
-				Qname: qname,
-				Qtype: dns.TypeAAAA,
-				Rcode: dns.RcodeSuccess,
-				Answer: []dns.RR{
-					test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::3")),
-				},
-			}
-			executeTestCase(fabdns, testRecorder, testCase)
-		})
-
-		It("should succeed with specified cluster AAAA record response", func() {
-			fabdns.Cluster.Name = "chaoyang"
-			fabdns.Cluster.Zone = "beijing"
-			fabdns.Cluster.Region = "north"
-
-			qname := fmt.Sprintf("%s.%s.%s.%s", svcNginxNorth, namespaceDefault, "chaoyang", testZone)
-			testCase := test.Case{
-				Qname: qname,
-				Qtype: dns.TypeAAAA,
-				Rcode: dns.RcodeSuccess,
-				Answer: []dns.RR{
-					test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::3")),
-				},
-			}
-			executeTestCase(fabdns, testRecorder, testCase)
-		})
-
-		It("should succeed with same zone AAAA record response", func() {
-			fabdns.Cluster.Name = "xicheng"
-			fabdns.Cluster.Zone = "beijing"
-			fabdns.Cluster.Region = "north"
-
-			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
-			testCase := test.Case{
-				Qname: qname,
-				Qtype: dns.TypeAAAA,
-				Rcode: dns.RcodeSuccess,
-				Answer: []dns.RR{
-					test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::3")),
-				},
-			}
-			executeTestCase(fabdns, testRecorder, testCase)
-		})
-
-		It("should succeed with same region AAAA record response", func() {
-			fabdns.Cluster.Name = "tianjin"
-			fabdns.Cluster.Zone = "tianjin"
-			fabdns.Cluster.Region = "north"
-
-			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
-			testCase := test.Case{
-				Qname: qname,
-				Qtype: dns.TypeAAAA,
-				Rcode: dns.RcodeSuccess,
-				Answer: []dns.RR{
-					test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::3")),
-					test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::4")),
-				},
-			}
-			executeTestCase(fabdns, testRecorder, testCase)
-		})
-
-		It("should succeed with all AAAA record response", func() {
-			fabdns.Cluster.Name = "xian"
-			fabdns.Cluster.Zone = "shanxi"
-			fabdns.Cluster.Region = "west"
-
-			qname := fmt.Sprintf("%s.%s.svc.%s", svcNginxNorth, namespaceDefault, testZone)
-			testCase := test.Case{
-				Qname: qname,
-				Qtype: dns.TypeAAAA,
-				Rcode: dns.RcodeSuccess,
-				Answer: []dns.RR{
-					test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::2")),
-					test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::3")),
-					test.AAAA(fmt.Sprintf("%s    5    IN    AAAA    %s", qname, "FF01::4")),
-				},
-			}
-			executeTestCase(fabdns, testRecorder, testCase)
-		})
-
 	})
 
 	When("global service type of ClusterIP exists but request is Headless", func() {
@@ -818,13 +825,13 @@ func deleteGlobalService(k8sclient client.Client, globalService *apis.GlobalServ
 
 func executeTestCase(fabdns *FabDNS, recorder *dnstest.Recorder, testcase test.Case) (rcode int, err error) {
 	rcode, err = fabdns.ServeDNS(context.TODO(), recorder, testcase.Msg())
-	Expect(rcode).To(Equal(testcase.Rcode))
+	ExpectWithOffset(1, rcode).To(Equal(testcase.Rcode), fmt.Sprintf("unexpected rcode returned, err: %s", err))
 
 	if testcase.Rcode == dns.RcodeSuccess {
-		Expect(err).To(Succeed())
-		Expect(test.SortAndCheck(recorder.Msg, testcase)).To(Succeed())
+		ExpectWithOffset(1, err).To(BeNil())
+		ExpectWithOffset(1, test.SortAndCheck(recorder.Msg, testcase)).To(Succeed())
 	} else {
-		Expect(err).To(HaveOccurred())
+		ExpectWithOffset(1, err).To(HaveOccurred())
 	}
 	return rcode, err
 }

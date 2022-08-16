@@ -45,7 +45,7 @@ fabdns:
 	GOOS=${GOOS} go build -ldflags="-X github.com/coredns/coredns/coremain.GitCommit=$(GIT_COMMIT)" -o ${OUTPUT_DIR}/$@ ./cmd/$@
 
 fabdns-image: buildx-install
-	docker build -t fabedge/fabdns:{VERSION} $(if $(PLATFORM),--platform $(PLATFORM)) $(if $(PUSH),--push) -f build/fabdns/Dockerfile .
+	docker build -t fabedge/fabdns:${VERSION} $(if $(PLATFORM),--platform $(PLATFORM)) $(if $(PUSH),--push) -f build/fabdns/Dockerfile .
 
 .PHONY: test
 test:
