@@ -48,9 +48,7 @@ const (
 
 var (
 	serviceNameNginx = "nginx"
-	//serviceNameNginx6 = "nginx6"
 	serviceNameMySQL = "mysql"
-	//serviceNameMySQL6 = "mysql6"
 
 	// 标记是否有失败的spec
 	hasFailedSpec = false
@@ -61,11 +59,9 @@ var (
 func init() {
 	_ = apis.AddToScheme(scheme.Scheme)
 
-	rand.Seed(int64(time.Now().UnixNano()))
+	rand.Seed(time.Now().UnixNano())
 	serviceNameNginx = getName(serviceNameNginx)
-	//serviceNameNginx6 = getName(serviceNameNginx6)
 	serviceNameMySQL = getName(serviceNameMySQL)
-	//serviceNameMySQL6 = getName(serviceNameMySQL6)
 }
 
 // RunE2ETests checks configuration parameters (specified through flags) and then runs
@@ -166,10 +162,6 @@ func prepareServicesOnEachCluster(namespace string) {
 	for _, cluster := range clusters {
 		cluster.prepareService(serviceNameNginx, namespace, nameNginx, false, ipFamilies)
 		cluster.prepareService(serviceNameMySQL, namespace, nameMySQL, true, ipFamilies)
-		//if framework.TestContext.IPv6Enabled {
-		//	cluster.prepareService(serviceNameNginx6, namespace, nameNginx, false, corev1.IPv6Protocol)
-		//	cluster.prepareService(serviceNameMySQL6, namespace, nameMySQL, true, corev1.IPv6Protocol)
-		//}
 	}
 }
 
@@ -193,13 +185,6 @@ func generateExpectedGlobalServices() []apis.GlobalService {
 		generateGlobalService(serviceNameNginx, testNamespace, apis.ClusterIP),
 		generateGlobalService(serviceNameMySQL, testNamespace, apis.Headless),
 	}
-
-	//if framework.TestContext.IPv6Enabled {
-	//	globalServices = append(globalServices,
-	//		generateGlobalService(serviceNameNginx6, testNamespace, apis.ClusterIP),
-	//		generateGlobalService(serviceNameMySQL6, testNamespace, apis.Headless),
-	//	)
-	//}
 
 	return globalServices
 }
