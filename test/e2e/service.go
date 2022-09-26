@@ -40,8 +40,33 @@ var _ = Describe("FabDNS", func() {
 
 			if framework.TestContext.IPv6Enabled {
 				framework.Logf("%s/%s visit global service %s using IPv6", cluster.name, nameNetTool, url)
+				_, _, err = cluster.execCurl6(clientPod, url)
+				framework.ExpectNoError(err)
+			}
+		}
+	})
+
+	It("any pod can access ClusterIP services of other clusters by domain name", func() {
+		for _, cluster := range clusters {
+			var clientPod corev1.Pod
+			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: nameNetTool}, &clientPod)
+			framework.ExpectNoError(err)
+
+			for _, tc := range clusters {
+				if cluster.name == tc.name {
+					continue
+				}
+
+				url := fmt.Sprintf("%s.%s.%s.svc.%s", tc.name, serviceNameNginx, testNamespace, framework.TestContext.FabdnsZone)
+				framework.Logf("%s/%s visit global service %s ", cluster.name, nameNetTool, url)
 				_, _, err = cluster.execCurl(clientPod, url)
 				framework.ExpectNoError(err)
+
+				if framework.TestContext.IPv6Enabled {
+					framework.Logf("%s/%s visit global service %s using IPv6", cluster.name, nameNetTool, url)
+					_, _, err = cluster.execCurl6(clientPod, url)
+					framework.ExpectNoError(err)
+				}
 			}
 		}
 	})
@@ -62,6 +87,31 @@ var _ = Describe("FabDNS", func() {
 				framework.Logf("%s/%s visit global service %s using IPv6", cluster.name, nameNetTool, url)
 				_, _, err = cluster.execCurl6(clientPod, url)
 				framework.ExpectNoError(err)
+			}
+		}
+	})
+
+	It("any pod can access headless services of other clusters by domain name", func() {
+		for _, cluster := range clusters {
+			var clientPod corev1.Pod
+			err := cluster.client.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: nameNetTool}, &clientPod)
+			framework.ExpectNoError(err)
+
+			for _, tc := range clusters {
+				if cluster.name == tc.name {
+					continue
+				}
+
+				url := fmt.Sprintf("%s.%s.%s.svc.%s", tc.name, serviceNameMySQL, testNamespace, framework.TestContext.FabdnsZone)
+				framework.Logf("%s/%s visit global service %s ", cluster.name, nameNetTool, url)
+				_, _, err = cluster.execCurl(clientPod, url)
+				framework.ExpectNoError(err)
+
+				if framework.TestContext.IPv6Enabled {
+					framework.Logf("%s/%s visit global service %s using IPv6", cluster.name, nameNetTool, url)
+					_, _, err = cluster.execCurl6(clientPod, url)
+					framework.ExpectNoError(err)
+				}
 			}
 		}
 	})
