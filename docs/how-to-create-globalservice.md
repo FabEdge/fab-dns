@@ -81,8 +81,6 @@ spec:
 
 ```
 
-
-
 这时可以在本集群的任意pod通过域名`nginx.default.svc.global`访问nginx这个全局服务了。FabDNS提供了简单的拓扑感知，如果你在beijing集群访问`nginx.default.svc.global`，这是提供响应的会是beijing集群的nginx服务；如果是在shijiazhuang集群访问这个域名，响应服务的可能是beijing或shanghai的nginx服务。
 
 如果想访问某个集群的nginx服务，比如chaoyang的nginx服务，可以用`chaoyang.nginx.default.svc.global`去访问。但不能访问shijiazhuang的nginx服务，因为它不是全局服务。
@@ -100,7 +98,7 @@ metadata:
   name: mysql
   namespace: default
 spec:
-  type: None
+  clusterIP: None
   ports:
   - name: default
     port: 3306
